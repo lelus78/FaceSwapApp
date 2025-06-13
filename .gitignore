@@ -1,0 +1,16 @@
+# Dati e Modelli
+/models/
+/sdxl_models/
+/downloads/
+/immagini/
+/gfpgan/
+
+# Ambiente Python
+/venv/
+__pycache__/
+
+# File sensibili e di sistema
+api_key.txt
+ngrok.exe
+.DS_Store
+FaceSwapApp.zip
