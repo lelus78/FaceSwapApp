@@ -2,7 +2,7 @@
 // === API.JS - Modulo per la comunicazione con il server ===
 // ===================================================================================
 
-const BASE_URL = "https://INCOLLA_QUI_IL_TUO_URL_NGROK"; 
+const BASE_URL = "http://localhost:8765";
 async function handleResponse(response) {
     if (!response.ok) {
         const contentType = response.headers.get("content-type");
@@ -18,11 +18,6 @@ async function handleResponse(response) {
     return response;
 }
 
-export async function loadApiKey() {
-    const response = await fetch(`${BASE_URL}/api_key`);
-    await handleResponse(response);
-    return response.json();
-}
 
 export async function saveApiKey(apiKey) {
     await fetch(`${BASE_URL}/api_key`, {

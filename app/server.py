@@ -93,7 +93,7 @@ def normalize_image(img, max_dim=1024):
 
 # --- APPLICATION FACTORY ---
 def create_app():
-    app = Flask(__name__, template_folder='../templates', static_folder='../static')
+    app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Imposta il limite a 16 Megabyte
 
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
@@ -106,12 +106,11 @@ def create_app():
     @app.route('/lottie_json/<path:sticker_path>')
     def get_lottie_json(sticker_path):
         try:
-            # Assumendo che 'static' sia una cartella di primo livello rispetto alla root del progetto
-            base_dir = os.path.join(app.root_path, '..', 'static')
-            file_path = os.path.join(base_dir, sticker_path)
+            # CORREZIONE: Usa direttamente app.static_folder che ora punta al posto giusto
+            file_path = os.path.join(app.static_folder, sticker_path)
             
             safe_path = os.path.abspath(file_path)
-            if not safe_path.startswith(os.path.abspath(base_dir)):
+            if not safe_path.startswith(os.path.abspath(app.static_folder)):
                  return jsonify({"error": "Forbidden"}), 403
             if not os.path.exists(safe_path):
                 return jsonify({"error": "File not found"}), 404
@@ -125,14 +124,13 @@ def create_app():
 
     @app.route('/api/stickers')
     def get_stickers_api():
-        # Assumendo che 'static' sia una cartella di primo livello rispetto alla root del progetto
-        sticker_dir = os.path.join(app.root_path, '..', 'static', 'stickers')
+        # CORREZIONE: Il percorso ora punta alla cartella stickers dentro la cartella static di default
+        sticker_dir = os.path.join(app.static_folder, 'stickers')
         sticker_data = []
         if not os.path.isdir(sticker_dir):
+            # Questo è l'errore che vedi: la condizione è vera perché il percorso era sbagliato
             return jsonify({"error": "La cartella degli sticker non esiste"}), 404
         
-        static_folder_path = os.path.join(app.root_path, '..', 'static')
-
         for root, dirs, files in os.walk(sticker_dir):
             category_name = os.path.basename(root)
             if root == sticker_dir:
@@ -140,7 +138,8 @@ def create_app():
             sticker_paths = []
             for file in sorted(files):
                 if file.lower().endswith(('.png', '.webm', '.tgs')):
-                    relative_dir = os.path.relpath(root, static_folder_path)
+                    # CORREZIONE: Semplificato il calcolo del percorso relativo
+                    relative_dir = os.path.relpath(root, app.static_folder)
                     rel_path = os.path.join(relative_dir, file).replace("\\", "/")
                     sticker_paths.append(os.path.join('static', rel_path).replace("\\", "/"))
             if sticker_paths:
@@ -266,7 +265,7 @@ def create_app():
             if not all([base64_image, user_prompt]):
                 return jsonify({"error": "Dati mancanti"}), 400
                 
-            google_api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={api_key}"
+            google_api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
             
             system_prompt = (f"You are an expert prompt engineer for AI image generators. Look at the people in the attached image. Your task is to create a detailed, photorealistic background scene for them based on the user's idea: '{user_prompt}'.\n**Crucially, your generated prompt must describe ONLY the background, the environment, and the lighting. DO NOT mention or describe people, figures, or subjects in your prompt.** Your prompt must create an empty stage for the people in the image to be placed into. **The entire response must be less than 75 tokens long.** Respond ONLY with the new, enhanced prompt. Do not add quotation marks.")
             

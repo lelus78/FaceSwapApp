@@ -919,14 +919,6 @@ function main() {
     setupEventListeners();
     loadStickers();
     resetWorkflow();
-    api.loadApiKey().then(data => {
-        if (data.api_key && dom.geminiApiKeyInput) {
-            dom.geminiApiKeyInput.value = data.api_key;
-        }
-    }).catch(err => {
-        console.error("Errore di connessione al server:", err);
-        showError("Errore di Rete", "Impossibile contattare il server. Assicurati che server.py sia in esecuzione.");
-    });
     animationLoop();
 }
 
