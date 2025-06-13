@@ -22,15 +22,12 @@ from controlnet_aux import CannyDetector
 from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
-from flask import Flask, request, send_file, jsonify, render_template
+from flask import Flask, request, send_file, jsonify, render_template, current_app
 from flask_cors import CORS
 
-# Importa il Blueprint dal nuovo file e carica la chiave API
+# Importa il Blueprint dal nuovo file e le librerie necessarie
 from app.meme_studio import meme_bp
 from dotenv import load_dotenv
-
-load_dotenv() # Carica le variabili dal file .env
-api_key = os.getenv("GEMINI_API_KEY")
 
 # ===================================================================================
 # === CONFIGURAZIONE GLOBALE ===
@@ -93,7 +90,14 @@ def normalize_image(img, max_dim=1024):
 
 # --- APPLICATION FACTORY ---
 def create_app():
+    # CORREZIONE: Usiamo il costruttore semplice. Flask cercherà 'static' e 'templates'
+    # automaticamente dentro la cartella 'app/', che è la nostra struttura.
     app = Flask(__name__)
+    
+    # Carichiamo la chiave API e la salviamo nella config dell'app
+    load_dotenv()
+    app.config['GEMINI_API_KEY'] = os.getenv("GEMINI_API_KEY")
+
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Imposta il limite a 16 Megabyte
 
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
@@ -128,7 +132,6 @@ def create_app():
         sticker_dir = os.path.join(app.static_folder, 'stickers')
         sticker_data = []
         if not os.path.isdir(sticker_dir):
-            # Questo è l'errore che vedi: la condizione è vera perché il percorso era sbagliato
             return jsonify({"error": "La cartella degli sticker non esiste"}), 404
         
         for root, dirs, files in os.walk(sticker_dir):
@@ -138,7 +141,6 @@ def create_app():
             sticker_paths = []
             for file in sorted(files):
                 if file.lower().endswith(('.png', '.webm', '.tgs')):
-                    # CORREZIONE: Semplificato il calcolo del percorso relativo
                     relative_dir = os.path.relpath(root, app.static_folder)
                     rel_path = os.path.join(relative_dir, file).replace("\\", "/")
                     sticker_paths.append(os.path.join('static', rel_path).replace("\\", "/"))
@@ -254,7 +256,9 @@ def create_app():
 
     @app.route('/enhance_prompt', methods=['POST'])
     def enhance_prompt():
-        # Usa la variabile 'api_key' globale caricata all'avvio dal file .env
+        # CORREZIONE: Leggiamo la chiave dalla config dell'app
+        api_key = current_app.config.get('GEMINI_API_KEY')
+        
         if not api_key:
             return jsonify({"error": "Chiave API di Gemini non trovata o non configurata nel file .env"}), 400
             
@@ -269,7 +273,7 @@ def create_app():
             
             system_prompt = (f"You are an expert prompt engineer for AI image generators. Look at the people in the attached image. Your task is to create a detailed, photorealistic background scene for them based on the user's idea: '{user_prompt}'.\n**Crucially, your generated prompt must describe ONLY the background, the environment, and the lighting. DO NOT mention or describe people, figures, or subjects in your prompt.** Your prompt must create an empty stage for the people in the image to be placed into. **The entire response must be less than 75 tokens long.** Respond ONLY with the new, enhanced prompt. Do not add quotation marks.")
             
-            payload = {"contents": [{"parts": [{"text": system_prompt}, {"inlineData": {"mimeType": "image/png", "data": base64_image}}]}]}
+            payload = {"contents": [{"parts": [{"text": system_prompt}, {"inlineData": {"mimeType": "image/jpeg", "data": base64_image}}]}]}
             response = requests.post(google_api_url, headers={'Content-Type': 'application/json'}, json=payload)
             response.raise_for_status()
             
