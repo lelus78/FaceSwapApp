@@ -19,14 +19,18 @@ from gfpgan import GFPGANer
 from rembg import remove
 from diffusers import StableDiffusionXLControlNetInpaintPipeline, ControlNetModel, DPMSolverMultistepScheduler
 from controlnet_aux import CannyDetector
-from PIL import Image, ImageDraw
+from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from flask import Flask, request, send_file, jsonify, render_template
 from flask_cors import CORS
 
-# Importa il Blueprint dal nuovo file
-from app.meme_studio import meme_bp 
+# Importa il Blueprint dal nuovo file e carica la chiave API
+from app.meme_studio import meme_bp
+from dotenv import load_dotenv
+
+load_dotenv() # Carica le variabili dal file .env
+api_key = os.getenv("GEMINI_API_KEY")
 
 # ===================================================================================
 # === CONFIGURAZIONE GLOBALE ===
@@ -34,15 +38,14 @@ from app.meme_studio import meme_bp
 CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
 CFG_SAMPLER = "DPM++"
 CFG_SCENE_STEPS = 35
-CFG_SCENE_GUIDANCE = 12 
+CFG_SCENE_GUIDANCE = 12
 CFG_UPSCALE_FACTOR = 1.5
 CFG_DETAIL_STEPS = 20
 CFG_OVERLAP = 128
-API_KEY_FILE = 'api_key.txt'
 # ===================================================================================
 
 # --- INIZIALIZZAZIONE MODELLI GLOBALI ---
-print(" [+] Inizializzazione modelli AI..."); 
+print(" [+] Inizializzazione modelli AI...");
 face_analyzer = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
 model_path_swapper = os.path.join('models', 'inswapper_128.onnx'); face_swapper = insightface.model_zoo.get_model(model_path_swapper, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 gfpgan_model_path = os.path.join('models', 'GFPGANv1.4.pth'); face_restorer = GFPGANer(model_path=gfpgan_model_path, upscale=1, arch='clean', channel_multiplier=2, bg_upsampler=None) if os.path.exists(gfpgan_model_path) else None
@@ -90,9 +93,7 @@ def normalize_image(img, max_dim=1024):
 
 # --- APPLICATION FACTORY ---
 def create_app():
-    app = Flask(__name__, template_folder='templates', static_folder='static')
-
-    # LA CONFIGURAZIONE VA MESSA SUBITO DOPO LA CREAZIONE DELL'APP
+    app = Flask(__name__, template_folder='../templates', static_folder='../static')
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Imposta il limite a 16 Megabyte
 
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
@@ -105,13 +106,16 @@ def create_app():
     @app.route('/lottie_json/<path:sticker_path>')
     def get_lottie_json(sticker_path):
         try:
-            base_dir = app.static_folder
+            # Assumendo che 'static' sia una cartella di primo livello rispetto alla root del progetto
+            base_dir = os.path.join(app.root_path, '..', 'static')
             file_path = os.path.join(base_dir, sticker_path)
+            
             safe_path = os.path.abspath(file_path)
             if not safe_path.startswith(os.path.abspath(base_dir)):
                  return jsonify({"error": "Forbidden"}), 403
             if not os.path.exists(safe_path):
                 return jsonify({"error": "File not found"}), 404
+            
             with gzip.open(safe_path, 'rt', encoding='utf-8') as f:
                 json_content = json.load(f)
             return jsonify(json_content)
@@ -121,10 +125,14 @@ def create_app():
 
     @app.route('/api/stickers')
     def get_stickers_api():
-        sticker_dir = os.path.join(app.static_folder, 'stickers')
+        # Assumendo che 'static' sia una cartella di primo livello rispetto alla root del progetto
+        sticker_dir = os.path.join(app.root_path, '..', 'static', 'stickers')
         sticker_data = []
         if not os.path.isdir(sticker_dir):
             return jsonify({"error": "La cartella degli sticker non esiste"}), 404
+        
+        static_folder_path = os.path.join(app.root_path, '..', 'static')
+
         for root, dirs, files in os.walk(sticker_dir):
             category_name = os.path.basename(root)
             if root == sticker_dir:
@@ -132,7 +140,7 @@ def create_app():
             sticker_paths = []
             for file in sorted(files):
                 if file.lower().endswith(('.png', '.webm', '.tgs')):
-                    relative_dir = os.path.relpath(root, app.static_folder)
+                    relative_dir = os.path.relpath(root, static_folder_path)
                     rel_path = os.path.join(relative_dir, file).replace("\\", "/")
                     sticker_paths.append(os.path.join('static', rel_path).replace("\\", "/"))
             if sticker_paths:
@@ -186,7 +194,7 @@ def create_app():
             return send_file(buf, mimetype='image/png')
         except Exception as e:
             traceback.print_exc(); return jsonify({"error": f"Errore durante la creazione della scena: {e}"}), 500
-            
+
     @app.route('/detail_and_upscale', methods=['POST'])
     def detail_and_upscale():
         if 'scene_image' not in request.files: return jsonify({"error": "Immagine della scena mancante."}), 400
@@ -222,7 +230,7 @@ def create_app():
             return send_file(buf, mimetype='image/png')
         except Exception as e:
             traceback.print_exc(); return jsonify({"error": f"Errore durante l'upscaling: {e}"}), 500
-            
+
     @app.route('/final_swap', methods=['POST'])
     def final_swap():
         if 'target_image_high_res' not in request.files or 'source_face_image' not in request.files: return jsonify({"error": "Immagini mancanti."}), 400
@@ -247,39 +255,36 @@ def create_app():
 
     @app.route('/enhance_prompt', methods=['POST'])
     def enhance_prompt():
+        # Usa la variabile 'api_key' globale caricata all'avvio dal file .env
+        if not api_key:
+            return jsonify({"error": "Chiave API di Gemini non trovata o non configurata nel file .env"}), 400
+            
         try:
-            api_key = ""; 
-            if os.path.exists(API_KEY_FILE):
-                with open(API_KEY_FILE, 'r') as f: api_key = f.read().strip()
-            if not api_key: return jsonify({"error": "Chiave API di Gemini non trovata sul server."}), 400
             data = request.get_json()
             base64_image, user_prompt = data.get('image_data'), data.get('prompt_text')
-            if not all([base64_image, user_prompt]): return jsonify({"error": "Dati mancanti"}), 400
-            google_api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+            
+            if not all([base64_image, user_prompt]):
+                return jsonify({"error": "Dati mancanti"}), 400
+                
+            google_api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={api_key}"
+            
             system_prompt = (f"You are an expert prompt engineer for AI image generators. Look at the people in the attached image. Your task is to create a detailed, photorealistic background scene for them based on the user's idea: '{user_prompt}'.\n**Crucially, your generated prompt must describe ONLY the background, the environment, and the lighting. DO NOT mention or describe people, figures, or subjects in your prompt.** Your prompt must create an empty stage for the people in the image to be placed into. **The entire response must be less than 75 tokens long.** Respond ONLY with the new, enhanced prompt. Do not add quotation marks.")
+            
             payload = {"contents": [{"parts": [{"text": system_prompt}, {"inlineData": {"mimeType": "image/png", "data": base64_image}}]}]}
             response = requests.post(google_api_url, headers={'Content-Type': 'application/json'}, json=payload)
             response.raise_for_status()
+            
             result = response.json()
+            
             if result.get("candidates"):
                 enhanced_prompt = result["candidates"][0]["content"]["parts"][0]["text"].strip().replace('"', '')
                 return jsonify({"enhanced_prompt": enhanced_prompt})
             else:
-                error_info = result.get("promptFeedback", {}); return jsonify({"error": f"Gemini non ha restituito un prompt valido. Causa: {error_info}"}), 500
+                error_info = result.get("promptFeedback", {})
+                return jsonify({"error": f"Gemini non ha restituito un prompt valido. Causa: {error_info}"}), 500
+                
         except Exception as e:
-            traceback.print_exc(); return jsonify({"error": f"Errore durante il miglioramento del prompt: {e}"}), 500
-
-    @app.route('/api_key', methods=['GET', 'POST'])
-    def handle_api_key():
-        if request.method == 'GET':
-            if os.path.exists(API_KEY_FILE):
-                with open(API_KEY_FILE, 'r') as f: return jsonify({'api_key': f.read().strip()})
-            return jsonify({'api_key': ''})
-        elif request.method == 'POST':
-            data = request.get_json()
-            if 'api_key' in data:
-                with open(API_KEY_FILE, 'w') as f: f.write(data['api_key'])
-                return jsonify({'status': 'success'})
-            return jsonify({'status': 'failed', 'error': 'chiave non fornita'}), 400
+            traceback.print_exc()
+            return jsonify({"error": f"Errore durante il miglioramento del prompt: {e}"}), 500
 
     return app

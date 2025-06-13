@@ -14,6 +14,7 @@ api_key.txt
 ngrok.exe
 .DS_Store
 FaceSwapApp.zip
+.env
 
 # Ignora tutti gli sticker per velocizzare Git
 app/static/stickers/
