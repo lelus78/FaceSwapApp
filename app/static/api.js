@@ -1,8 +1,7 @@
-// ===================================================================================
-// === API.JS - Modulo per la comunicazione con il server ===
-// ===================================================================================
+// API.JS - Modulo per la comunicazione con il server
+// BASE_URL dinamica: funziona da qualsiasi host
+const BASE_URL = window.location.origin;
 
-const BASE_URL = "http://localhost:8765";
 async function handleResponse(response) {
     if (!response.ok) {
         const contentType = response.headers.get("content-type");
@@ -16,15 +15,6 @@ async function handleResponse(response) {
         }
     }
     return response;
-}
-
-
-export async function saveApiKey(apiKey) {
-    await fetch(`${BASE_URL}/api_key`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: apiKey })
-    });
 }
 
 export async function getStickers() {
@@ -79,14 +69,14 @@ export async function performSwap(targetImageBlob, sourceImageFile, sourceIndex,
     return response.blob();
 }
 
-export async function enhancePrompt(apiKey, imageBlob, userPrompt) {
+export async function enhancePrompt(imageBlob, userPrompt) {
     const reader = new FileReader();
     reader.readAsDataURL(imageBlob);
     const base64ImageData = await new Promise(resolve => { reader.onloadend = () => resolve(reader.result.split(',')[1]); });
     const response = await fetch(`${BASE_URL}/enhance_prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: apiKey, image_data: base64ImageData, prompt_text: userPrompt })
+        body: JSON.stringify({ image_data: base64ImageData, prompt_text: userPrompt })
     });
     await handleResponse(response);
     return response.json();

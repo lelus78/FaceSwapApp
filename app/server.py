@@ -1,6 +1,3 @@
-# ===================================================================================
-# === AI FACE SWAP STUDIO PRO 2.0 - SERVER.PY - VERSIONE FINALE E CORRETTA ===
-# ===================================================================================
 import os
 import cv2
 import numpy as np
@@ -11,7 +8,6 @@ import traceback
 import gzip
 import json
 
-# Import delle librerie AI
 import torch
 import insightface
 from insightface.app import FaceAnalysis
@@ -24,14 +20,10 @@ from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from flask import Flask, request, send_file, jsonify, render_template, current_app
 from flask_cors import CORS
-
-# Importa il Blueprint dal nuovo file e le librerie necessarie
 from app.meme_studio import meme_bp
 from dotenv import load_dotenv
 
-# ===================================================================================
 # === CONFIGURAZIONE GLOBALE ===
-# ===================================================================================
 CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
 CFG_SAMPLER = "DPM++"
 CFG_SCENE_STEPS = 35
@@ -39,7 +31,6 @@ CFG_SCENE_GUIDANCE = 12
 CFG_UPSCALE_FACTOR = 1.5
 CFG_DETAIL_STEPS = 20
 CFG_OVERLAP = 128
-# ===================================================================================
 
 # --- INIZIALIZZAZIONE MODELLI GLOBALI ---
 print(" [+] Inizializzazione modelli AI...");
@@ -55,9 +46,8 @@ try:
         print(" [+] Modello Real-ESRGAN x2 per upscaling caricato con successo.")
     else: print(" [ATTENZIONE] Modello RealESRGAN_x2plus.pth non trovato.")
 except Exception as e: print(f" [ERRORE] Impossibile caricare Real-ESRGAN: {e}.")
-pipe = None; canny_detector = None; current_model_type = None
+pipe = None; canny_detector = None;
 print(" [+] Modelli base pronti. Le pipeline SDXL verranno caricate al primo utilizzo.")
-
 
 # --- FUNZIONI HELPER ---
 def ensure_pipeline_is_loaded():
@@ -66,13 +56,11 @@ def ensure_pipeline_is_loaded():
     print(f" [INFO] Caricamento della pipeline...")
     try:
         model_path = os.path.join('models', 'checkpoints', CFG_MODEL_NAME)
-        print(f" [INFO] Caricamento del checkpoint personalizzato da: {model_path}")
         if not os.path.isdir(model_path): print(f"[ERRORE GRAVE] La cartella del modello non esiste: {model_path}"); return False
         canny_detector = CannyDetector()
         controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16)
         pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(model_path, controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True)
         if CFG_SAMPLER == "DPM++":
-            print(" [INFO] Utilizzo dello scheduler DPMSolverMultistepScheduler (DPM++).")
             pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         pipe.enable_vae_slicing(); pipe.enable_model_cpu_offload()
         print(f" [INFO] Pipeline con checkpoint '{CFG_MODEL_NAME}' e scheduler '{CFG_SAMPLER}' caricata.")
@@ -90,19 +78,16 @@ def normalize_image(img, max_dim=1024):
 
 # --- APPLICATION FACTORY ---
 def create_app():
-    # CORREZIONE: Usiamo il costruttore semplice. Flask cercherà 'static' e 'templates'
-    # automaticamente dentro la cartella 'app/', che è la nostra struttura.
     app = Flask(__name__)
     
-    # Carichiamo la chiave API e la salviamo nella config dell'app
     load_dotenv()
     app.config['GEMINI_API_KEY'] = os.getenv("GEMINI_API_KEY")
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Imposta il limite a 16 Megabyte
-
-    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+    CORS(app, resources={r"/*": {"origins": ["http://192.168.1.57:8765", "http://93.38.52.230:8765"]}}, supports_credentials=True)
     app.register_blueprint(meme_bp)
 
+    # --- DEFINIZIONE DI TUTTE LE ROTTE DELL'APPLICAZIONE ---
     @app.route('/')
     def home():
         return render_template('index.html')
@@ -110,9 +95,7 @@ def create_app():
     @app.route('/lottie_json/<path:sticker_path>')
     def get_lottie_json(sticker_path):
         try:
-            # CORREZIONE: Usa direttamente app.static_folder che ora punta al posto giusto
             file_path = os.path.join(app.static_folder, sticker_path)
-            
             safe_path = os.path.abspath(file_path)
             if not safe_path.startswith(os.path.abspath(app.static_folder)):
                  return jsonify({"error": "Forbidden"}), 403
@@ -128,7 +111,6 @@ def create_app():
 
     @app.route('/api/stickers')
     def get_stickers_api():
-        # CORREZIONE: Il percorso ora punta alla cartella stickers dentro la cartella static di default
         sticker_dir = os.path.join(app.static_folder, 'stickers')
         sticker_data = []
         if not os.path.isdir(sticker_dir):
@@ -256,38 +238,35 @@ def create_app():
 
     @app.route('/enhance_prompt', methods=['POST'])
     def enhance_prompt():
-        # CORREZIONE: Leggiamo la chiave dalla config dell'app
         api_key = current_app.config.get('GEMINI_API_KEY')
-        
         if not api_key:
             return jsonify({"error": "Chiave API di Gemini non trovata o non configurata nel file .env"}), 400
-            
         try:
             data = request.get_json()
             base64_image, user_prompt = data.get('image_data'), data.get('prompt_text')
-            
             if not all([base64_image, user_prompt]):
                 return jsonify({"error": "Dati mancanti"}), 400
-                
             google_api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-            
             system_prompt = (f"You are an expert prompt engineer for AI image generators. Look at the people in the attached image. Your task is to create a detailed, photorealistic background scene for them based on the user's idea: '{user_prompt}'.\n**Crucially, your generated prompt must describe ONLY the background, the environment, and the lighting. DO NOT mention or describe people, figures, or subjects in your prompt.** Your prompt must create an empty stage for the people in the image to be placed into. **The entire response must be less than 75 tokens long.** Respond ONLY with the new, enhanced prompt. Do not add quotation marks.")
-            
             payload = {"contents": [{"parts": [{"text": system_prompt}, {"inlineData": {"mimeType": "image/jpeg", "data": base64_image}}]}]}
             response = requests.post(google_api_url, headers={'Content-Type': 'application/json'}, json=payload)
             response.raise_for_status()
-            
             result = response.json()
-            
             if result.get("candidates"):
                 enhanced_prompt = result["candidates"][0]["content"]["parts"][0]["text"].strip().replace('"', '')
                 return jsonify({"enhanced_prompt": enhanced_prompt})
             else:
                 error_info = result.get("promptFeedback", {})
                 return jsonify({"error": f"Gemini non ha restituito un prompt valido. Causa: {error_info}"}), 500
-                
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": f"Errore durante il miglioramento del prompt: {e}"}), 500
+
+    # Questa funzione è già stata spostata nel middleware in run.py,
+    # ma aggiungerla anche qui fornisce un ulteriore livello di sicurezza.
+    @app.after_request
+    def add_pna_header(response):
+        response.headers['Access-Control-Allow-Private-Network'] = 'true'
+        return response
 
     return app

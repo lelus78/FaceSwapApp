@@ -27,7 +27,69 @@ function displayImage(imageBlobOrFile, imageElement) {
         dom.resultPlaceholder.classList.add('hidden');
         dom.downloadBtn.classList.remove('hidden');
         if (navigator.share && navigator.canShare) {
-            dom.shareBtn.classList.remove('hidden');
+            
+// --- Gestione share / copia link ---
+if (navigator.share && navigator.canShare) {
+    // HTTPS / localhost ➜ share nativo
+    // --- Gestione share / copia link ---
+// --- Gestione share / copia link ---
+// Prima rimuoviamo QUALSIASI classe 'hidden' responsive (sm:hidden, md:hidden, ecc.)
+dom.shareBtn.className = dom.shareBtn.className.split(' ').filter(c => !c.includes('hidden')).join(' ') || '';
+dom.shareBtn.style.display = 'inline-flex';
+
+if (navigator.share && navigator.canShare) {
+    dom.shareBtn.textContent = 'Condividi';
+    dom.shareBtn.onclick = null;
+} else {
+    dom.shareBtn.textContent = 'Copia link';
+    dom.shareBtn.onclick = () => {
+        const url = window.location.href;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url)
+                .then(() => alert('Link copiato negli appunti!'))
+                .catch(() => alert('Copia non riuscita: copia manualmente il link dalla barra indirizzi.'));
+        } else {
+            prompt('Copia manualmente il link:', url);
+        }
+    };
+}
+dom.shareBtn.style.display = 'inline-flex';
+
+if (navigator.share && navigator.canShare) {
+    // HTTPS / localhost ➜ share nativo
+    dom.shareBtn.textContent = 'Condividi';
+    dom.shareBtn.onclick = null; // Usa listener nativo definito in setupEventListeners
+} else {
+    // HTTP ➜ fallback: copia link
+    dom.shareBtn.textContent = 'Copia link';
+    dom.shareBtn.onclick = () => {
+        const url = window.location.href;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url)
+                .then(() => alert('Link copiato negli appunti!'))
+                .catch(() => alert('Copia non riuscita: copia manualmente il link dalla barra indirizzi.'));
+        } else {
+            prompt('Copia manualmente il link:', url);
+        }
+    };
+}
+    dom.shareBtn.textContent = 'Condividi';
+    dom.shareBtn.onclick = null; // usa il listener nativo aggiunto più avanti
+} else {
+    // HTTP ➜ fallback: copia link
+    dom.shareBtn.classList.remove('hidden');
+    dom.shareBtn.textContent = 'Copia link';
+    dom.shareBtn.onclick = () => {
+        const url = window.location.href;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url)
+                .then(() => alert('Link copiato negli appunti!'))
+                .catch(() => alert('Copia non riuscita: copia manualmente il link.'));
+        } else {
+            prompt('Copia manualmente il link:', url);
+        }
+    };
+}
         }
     } else if (imageElement.id === 'subject-img-preview') {
         dom.subjectUploadPrompt.style.display = 'none';
@@ -195,8 +257,7 @@ async function handleCreateScene() {
     try {
         let finalPrompt = dom.bgPromptInput.value;
         if (dom.autoEnhancePromptToggle.checked) {
-            if (!dom.geminiApiKeyInput.value) throw new Error("Chiave API di Gemini mancante.");
-            const result = await api.enhancePrompt(dom.geminiApiKeyInput.value, processedSubjectBlob, dom.bgPromptInput.value);
+            const result = await api.enhancePrompt(processedSubjectBlob, dom.bgPromptInput.value);
             finalPrompt = result.enhanced_prompt;
             dom.bgPromptInput.value = finalPrompt;
         }
@@ -515,25 +576,35 @@ async function loadStickers() {
 
 
 function getStickerAtPosition(x, y) {
-    const handleSize = 30; 
-    
+    // Decide handle radius based on pointer type
+    const isTouchDevice = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const handleRadius = isTouchDevice ? 60 : 20;
+
+    // Loop top‑down through the sticker stack
     for (let i = stickerStack.length - 1; i >= 0; i--) {
         const sticker = stickerStack[i];
-        if (isPointInRotatedRectangle({ x, y }, sticker)) {
-            const stickerCenterX = sticker.x + sticker.width / 2;
-            const stickerCenterY = sticker.y + sticker.height / 2;
-            
-            const rotHandle = rotatePoint(stickerCenterX, stickerCenterY - sticker.height / 2 - 25, stickerCenterX, stickerCenterY, sticker.rotation);
-            if (distance(x, y, rotHandle.x, rotHandle.y) < handleSize) {
-                return { sticker: sticker, corner: 'rotate' };
-            }
+        const cx = sticker.x + sticker.width / 2;
+        const cy = sticker.y + sticker.height / 2;
 
-            const resizeHandle = rotatePoint(sticker.x + sticker.width, sticker.y + sticker.height, stickerCenterX, stickerCenterY, sticker.rotation);
-            if (distance(x, y, resizeHandle.x, resizeHandle.y) < handleSize) {
-                return { sticker: sticker, corner: 'resize' };
-            }
-            
-            return { sticker: sticker, corner: 'drag' };
+        // PRE‑COMPUTE the two physical handle positions **before** rotation
+        const rawRot = { x: cx, y: cy - sticker.height / 2 - 25 };
+        const rawResize = { x: sticker.x + sticker.width, y: sticker.y + sticker.height };
+
+        // Rotate them around the sticker centre
+        const rotHandle = rotatePoint(rawRot.x, rawRot.y, cx, cy, sticker.rotation);
+        const resizeHandle = rotatePoint(rawResize.x, rawResize.y, cx, cy, sticker.rotation);
+
+        // --- 1) HANDLE HIT‑TESTS  ---
+        if (distance(x, y, rotHandle.x, rotHandle.y) < handleRadius) {
+            return { sticker, corner: 'rotate' };
+        }
+        if (distance(x, y, resizeHandle.x, resizeHandle.y) < handleRadius) {
+            return { sticker, corner: 'resize' };
+        }
+
+        // --- 2) STANDARD RECT HIT‑TEST (for drag) ---
+        if (isPointInRotatedRectangle({ x, y }, sticker)) {
+            return { sticker, corner: 'drag' };
         }
     }
     return null;
@@ -581,6 +652,18 @@ function assignDomElements() {
         'sticker-section', 'sticker-gallery', 'sticker-delete-btn', 'sticker-front-btn', 'sticker-back-btn', 'toggle-face-boxes',
         'share-btn', 'sticker-search-input'
     ];
+
+    // --- Stub for removed Gemini API elements to prevent null errors ---
+    ['geminiApiKeyWrapper','geminiApiKeyInput'].forEach((key) => {
+        if(!dom[key]) {
+            dom[key] = {
+                classList: { add: ()=>{}, remove: ()=>{}, toggle: ()=>{} },
+                value: '',
+                focus: ()=>{}
+            };
+        }
+    });
+    
     ids.forEach(id => {
         const el = document.getElementById(id);
         if (!el) console.warn(`Elemento non trovato: #${id}`);
@@ -594,7 +677,7 @@ function setupEventListeners() {
     dom.subjectImgInput.addEventListener('change', (e) => handleSubjectFile(e.target.files[0]));
     dom.prepareSubjectBtn.addEventListener('click', handlePrepareSubject);
     dom.skipToSwapBtn.addEventListener('click', handleSkipToSwap);
-    if(dom.autoEnhancePromptToggle) dom.autoEnhancePromptToggle.addEventListener('change', (e) => dom.geminiApiKeyWrapper.classList.toggle('hidden', !e.target.checked));
+    if(dom.autoEnhancePromptToggle) dom.autoEnhancePromptToggle.addEventListener('change', (e) => dom.geminiApiKeyWrapper?.classList.toggle('hidden', !e.target.checked));
     if(dom.geminiApiKeyInput) dom.geminiApiKeyInput.addEventListener('blur', () => api.saveApiKey(dom.geminiApiKeyInput.value));
     if(dom.generateSceneBtn) dom.generateSceneBtn.addEventListener('click', handleCreateScene);
     if(dom.gotoStep3Btn) dom.gotoStep3Btn.addEventListener('click', () => goToStep(3));
@@ -624,7 +707,6 @@ function setupEventListeners() {
         }
     });
     if(dom.captionBtn) dom.captionBtn.addEventListener('click', async () => {
-        if (!dom.geminiApiKeyInput.value) return showError("Chiave API Mancante", "Inserisci la tua chiave API di Gemini.");
         const imageToCaption = finalImageWithSwap || upscaledImageBlob || sceneImageBlob || subjectFile;
         if (!imageToCaption) return showError("Immagine Mancante", "Nessuna immagine nell'anteprima.");
         startProgressBar("Generazione Didascalia Meme...", 10);
@@ -923,3 +1005,63 @@ function main() {
 }
 
 document.addEventListener('DOMContentLoaded', main);
+
+
+
+
+/* === Mouse rotation support (desktop) === */
+(function() {
+  const isCoarse = window.matchMedia('(pointer: coarse)').matches;
+  if (isCoarse) return; // touch users handled via pinch or handles
+
+  const rotateHandles = document.querySelectorAll('.rotate-handle');
+
+  rotateHandles.forEach(handle => {
+    let startAngle = 0;
+    let center = {x: 0, y: 0};
+    let sticker = null;
+
+    const onMouseMove = (e) => {
+      if (!sticker) return;
+      const dx = e.clientX - center.x;
+      const dy = e.clientY - center.y;
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const delta = angle - startAngle;
+      const currentRotation = parseFloat(sticker.dataset.rotation || 0);
+      const newRotation = currentRotation + delta;
+      sticker.style.transform = sticker.style.transform.replace(/rotate\([^)]*\)/, '') + ` rotate(${newRotation}deg)`;
+      sticker.dataset.rotation = newRotation;
+      startAngle = angle; // update for smooth continuous rotation
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      sticker = null;
+    };
+
+    handle.addEventListener('mousedown', (e) => {
+      sticker = handle.closest('.sticker');
+      if (!sticker) return;
+      const rect = sticker.getBoundingClientRect();
+      center = {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+      const dx = e.clientX - center.x;
+      const dy = e.clientY - center.y;
+      startAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      e.preventDefault();
+    });
+  });
+})();
+
+
+// --- Safe toggle for prompt enhancement ---
+if (dom.autoEnhancePromptToggle) {
+    dom.autoEnhancePromptToggle.addEventListener('change', () => {
+        if(dom.geminiApiKeyWrapper) {
+            dom.geminiApiKeyWrapper?.classList.toggle('hidden', !dom.autoEnhancePromptToggle.checked);
+        }
+    });
+}
+
