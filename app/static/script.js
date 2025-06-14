@@ -476,6 +476,8 @@ function setupEventListeners() {
             dom.filterButtonsContainer.querySelector('.active')?.classList.remove('active');
             e.target.classList.add('active');
             activeFilter = e.target.dataset.filter;
+            dom.resultImageDisplay.style.filter = activeFilter; // Applica il filtro anche all'immagine base
+            updateMemePreview();
         }
     });
     ['captionTextInput', 'fontFamilySelect', 'fontColorInput', 'strokeColorInput'].forEach(id => dom[id].addEventListener('input', updateMemePreview));
