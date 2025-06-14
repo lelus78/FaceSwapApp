@@ -1,143 +1,111 @@
-🎨 AI Face Swap Studio Pro 2.0
-A professional, guided workflow for creating composite images, from face swapping to complex AI-driven scene generation and creative finishing. This project serves as both a powerful tool and a practical example of chaining multiple AI models in a web application.
+# 🎨 AI Face Swap Studio Pro 2.0
 
-This project was born from the need for a tool that goes beyond simple face swapping, integrating modern image generation and enhancement technologies into a single, intuitive web interface. It demonstrates how to build a multi-stage AI pipeline, where the output of one model becomes the input for the next, to achieve a complex creative goal.
+*A full-featured, step-by-step workflow for professional-grade image compositing— from face swap to AI-generated scenes and creative finishing.*
 
-🚀 Key Features
-✨ Guided 4-Step Workflow: A stateful frontend guides the user step-by-step, making the complex process manageable.
+> **Why?**
+> Most “face-swap” tools end at the swap.
+> AFSS-Pro chains multiple state-of-the-art models so the **output of one stage becomes the input of the next**, producing a complete, photorealistic and share-ready result.
 
-✂️ Smart Background Removal: Automatically isolates the subject using rembg, providing a clean slate for composition.
+---
 
-🖼️ AI Scene Generation: Leverages Stable Diffusion XL in Inpainting mode to create photorealistic backgrounds from a text prompt.
+## 🚀 Key Features
 
-🧠 Prompt Enhancement with Gemini: Integrates the Google Gemini API to analyze the subject's image and automatically improve user prompts.
+| Category                      | Highlights                                                                                                                                                                                   |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Guided 4-Step Workflow**    | The frontend walks users through every stage— no GPU “gotchas”.                                                                                                                              |
+| **Smart BG Removal**          | Automatic subject isolation via `rembg`.                                                                                                                                                     |
+| **AI Scene Generation**       | Stable Diffusion XL (in-paint) turns text prompts into realistic backgrounds.                                                                                                                |
+| **Prompt Enhancement**        | Google Gemini analyzes the subject and enriches the user’s prompt.                                                                                                                           |
+| **Hi-Res Upscale & Detail**   | Real-ESRGAN + tiled ControlNet (Canny) restore sharpness without OOM.                                                                                                                        |
+| **Targeted Face Swap**        | InsightFace with index-based source/target selection.                                                                                                                                        |
+| **Face Restoration**          | GFPGAN for final skin & feature coherence.                                                                                                                                                   |
+| **Creative Finishing Studio** | <ul><li>Text & meme controls (font, size, stroke, etc.)</li><li>Sticker gallery (PNG · WebM · Lottie/.tgs) with drag‑rotate‑resize</li><li>Export as PNG **or** animated MP4 / GIF</li></ul> |
 
-🔍 Hi-Res Upscaling & Detailing: Uses Real-ESRGAN for upscaling and a tiled ControlNet (Canny Edge) pass to add fine details to large images without memory overload.
+---
 
-🎭 Targeted Face Swap: Implements InsightFace for precise, index-based selection of source and target faces.
+## 🛠️ Tech Stack
 
-🌟 Face Restoration with GFPGAN: Automatically improves the quality and coherence of the swapped face.
+| Layer         | Main Libraries / Tools                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| **Backend**   | Python 3.9+, Flask, Waitress, `python-dotenv`, `imageio-ffmpeg`                                  |
+| **AI Models** | PyTorch, Diffusers (SDXL + ControlNet), InsightFace, GFPGAN, Real‑ESRGAN, `rembg`, Google Gemini |
+| **Frontend**  | HTML 5, Tailwind CSS, Vanilla ES 6 Modules, `<canvas>` API, `lottie-web`                         |
 
-🎬 Creative Finishing Studio: A full suite of client-side tools for final adjustments:
+---
 
-Text & Meme Tools: Add customizable text with controls for font, size, color, and stroke.
+## 🧠 Architecture Overview
 
-Sticker Gallery: Supports static (PNG), animated (WebM), and vector (Lottie/.tgs) stickers with full manipulation controls.
+```
+rembg  →  Gemini  →  SDXL  →  Real-ESRGAN  →  ControlNet  →  InsightFace  →  GFPGAN
+(mask)    (prompt)   (scene)     (hi-res)      (detail)        (swap)        (restore)
+```
 
-Multi-Format Export: Save the final artwork as a static PNG or as a video animation in MP4 or GIF format.
+* **Server‑side** heavy lifting (GPU); models kept hot in VRAM for < 1 s latency.
+* **Client‑side** finishing (text, stickers, filters) via `<canvas>` keeps the server free of micro‑edits.
+* **Animated export**: MediaRecorder captures the canvas → lightweight WebM → backend converts to MP4 / GIF with `ffmpeg`.
 
-🛠️ Technology Stack
-This project combines several cutting-edge technologies:
+---
 
-Backend:
+## ⚙️ Installation
 
-Python 3.9+
-
-Flask (as a lightweight web framework)
-
-Waitress (as a production-ready WSGI server)
-
-python-dotenv (for managing environment variables)
-
-imageio-ffmpeg (for server-side video conversion)
-
-AI & Machine Learning:
-
-PyTorch
-
-Hugging Face Diffusers (for Stable Diffusion & ControlNet)
-
-InsightFace (for face analysis and swapping)
-
-GFPGAN & Real-ESRGAN (for image restoration and upscaling)
-
-rembg (for background removal)
-
-Google Gemini API
-
-Frontend:
-
-HTML5 & CSS3
-
-Tailwind CSS (for rapid UI development)
-
-Vanilla JavaScript (ES6 Modules, no build step required)
-
-lottie-web (for rendering Lottie animations)
-
-🧠 Technical Deep Dive & Architectural Choices
-This project is a practical case study in building a multi-stage AI pipeline, balancing server-side processing with client-side interactivity.
-
-The AI Pipeline: The application's core is a chain of specialized models where each step builds upon the last: rembg → Gemini → Stable Diffusion XL → Real-ESRGAN → ControlNet → InsightFace → GFPGAN. This sequential process is crucial because no single, monolithic model can perform such a wide array of tasks. The application manages the data flow, for instance, by using the RGBA image from rembg to create a mask for the Stable Diffusion composition. This modularity also means any model in the chain can be updated or swapped (e.g., replacing Real-ESRGAN with a newer upscaler) without rebuilding the entire application logic.
-
-Backend Philosophy: Flask was chosen for its simplicity and minimal boilerplate, allowing for rapid API development. Paired with Waitress, a production-ready WSGI server, it provides a stable environment without the complexity of larger frameworks like Django. The decision to load all models into VRAM at startup is a deliberate trade-off: it leads to higher initial memory consumption but guarantees low-latency responses for each API call, which is critical for a responsive user experience. This architecture is best suited for deployment on a machine with a dedicated, high-VRAM GPU.
-
-Frontend State Management: The choice of vanilla JavaScript avoids a complex build pipeline (like Webpack or Vite) and keeps the project accessible to developers who may not be familiar with modern frontend frameworks. State is managed through a simple dom object and a few global variables that hold the image data (as Blobs) from each step. While this is highly effective for a single-user, linear workflow, it could become challenging to manage in a more complex application with non-linear steps. A developer looking to expand the project might consider this a prime area for refactoring into a lightweight state library or a component-based framework like Svelte or Vue.
-
-Client-Side Finishing: This hybrid approach significantly enhances performance and reduces server costs. By offloading all real-time rendering of text, stickers, and filters to the user's GPU via the <canvas> API, the server is freed from expensive and frequent image manipulation requests. The final static image is exported using canvas.toDataURL(), a purely client-side operation. For animated exports, the frontend uses the MediaRecorder API to capture a high-framerate stream from the canvas, which is then sent to the server as a lightweight WebM blob for efficient conversion to MP4 or GIF using ffmpeg. This strategy optimally balances client and server resources.
-
-⚙️ Installation and Setup
-To run the project locally, follow these steps:
-
-Clone the Repository
-
+```bash
 git clone https://github.com/lelus78/FaceSwapApp.git
 cd FaceSwapApp
 
-
-Create a Virtual Environment & Install Dependencies
-
-# Create the virtual environment
 python -m venv venv
-
-# Activate it
-# On Windows:
+# Windows
 .\venv\Scripts\activate
-# On macOS/Linux:
+# macOS / Linux
 source venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
+pip install imageio-ffmpeg   # server‑side ffmpeg wrapper
+```
 
+### Download Required Models
 
-Download AI Models
-You must download the models manually and place them in the correct folders as referenced in app/server.py.
+| Model                             | Path                    |
+| --------------------------------- | ----------------------- |
+| SDXL checkpoint (`*.safetensors`) | `./models/checkpoints/` |
+| InsightFace `inswapper_128.onnx`  | `./models/`             |
+| GFPGANv1.4 & RealESRGAN\_x2plus   | `./models/`             |
 
-SDXL Checkpoint: Place your .safetensors model file in ./models/checkpoints/.
+> Other models (ControlNet, InsightFace analysis, etc.) auto‑download on first run.
 
-InsightFace Swapper: Place inswapper_128.onnx in ./models/.
+### Configure Environment
 
-Enhancement Models: Place GFPGANv1.4.pth and RealESRGAN_x2plus.pth in ./models/.
+Create `.env` in the project root:
 
-Other models (ControlNet, InsightFace analysis) will be downloaded automatically on first run.
+```bash
+GEMINI_API_KEY="YOUR_GOOGLE_GEMINI_KEY"
+```
 
-Set Up Environment Variables
-Create a file named .env in the project's root directory. Add your Google Gemini API key to it:
+### Run Locally
 
-GEMINI_API_KEY="YOUR_API_KEY_HERE"
-
-
-Note: Remember to add .env to your .gitignore file to prevent accidentally committing your secret keys.
-
-Run the Application
-
+```bash
 python run.py
+```
 
+Browse to [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
-The application will be available at http://127.0.0.1:8765.
+---
 
-🔧 Contributing & Future Ideas
-Contributions are welcome! This project has a lot of potential for expansion. Fork the repo, create a new branch for your feature, and submit a pull request.
+## 🔧 Contributing
 
-Potential Improvements & Feature Roadmap
-[ ] Asynchronous AI Tasks: Move long-running AI jobs to a background worker queue (e.g., Celery) to prevent server timeouts and improve UI responsiveness.
+1. Fork → feature branch → PR
+2. Follow PEP‑8 & Prettier defaults
+3. Include before/after screenshots for UI changes
 
-[ ] Advanced State Management: Refactor the frontend's global variables into a more robust state management pattern.
+### Roadmap
 
-[ ] Backend Refactoring: Split server.py into multiple Flask Blueprints for better organization.
+* [ ] Async task queue (Celery) for long AI jobs
+* [ ] Vue/Svelte refactor for complex state
+* [ ] Model hot‑swap UI (choose SDXL checkpoint, upscaler, etc.)
+* [ ] Multi‑subject scenes
+* [ ] Advanced sticker transforms (perspective / warp)
 
-[ ] More Model Choices: Add UI options to allow the user to select different SDXL checkpoints or upscalers.
+---
 
-[ ] Multi-Subject Support: Allow the composition of multiple subjects into a single scene.
+## 📜 License
 
-[ ] Improved Sticker Controls: Add more advanced manipulation features like perspective distortion.
+MIT — do what you want, credit appreciated.
