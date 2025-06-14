@@ -351,6 +351,15 @@ function updateMemePreview() {
         dom.memeCanvas.classList.add('hidden');
         dom.resultImageDisplay.classList.remove('hidden');
     }
+// -------------- VISIBILITÀ PULSANTE SHARE / COPIA LINK --------------
+if (navigator.share && navigator.canShare) {
+    dom.shareBtn.classList.remove('hidden');              // contesto HTTPS / localhost
+    dom.shareBtn.textContent = 'Condividi';
+} else {
+    dom.shareBtn.classList.remove('hidden');              // contesto HTTP
+    dom.shareBtn.textContent = 'Copia link';
+}
+dom.shareBtn.style.cssText += 'display:inline-flex !important; opacity:1 !important; visibility:visible !important;';
 
     if (text) {
         const fontFamily = dom.fontFamilySelect.value;
@@ -407,6 +416,7 @@ function updateMemePreview() {
         ctx.rotate(sticker.rotation);
         ctx.drawImage(sticker.element, -sticker.width / 2, -sticker.height / 2, sticker.width, sticker.height);
         ctx.restore();
+        
         
         if (sticker === selectedSticker) {
             ctx.save();
