@@ -6,11 +6,10 @@
     <title>AI Face Swap Studio Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="antialiased">
+<body class="antialiased bg-gray-900">
 
     <div id="error-modal" class="modal">
         <div class="flex items-center justify-center min-h-screen px-4">
@@ -21,6 +20,7 @@
             </div>
         </div>
     </div>
+
     <div id="progress-modal" class="modal">
         <div class="flex items-center justify-center min-h-screen px-4">
             <div class="modal-content bg-gray-900 border border-gray-700 text-white rounded-lg p-8 shadow-2xl max-w-sm mx-auto w-full">
@@ -33,6 +33,7 @@
             </div>
         </div>
     </div>
+
     <div class="flex flex-col min-h-screen">
         <header class="text-center py-6 bg-gray-900 border-b border-gray-700">
             <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-white">AI Face Swap <span class="text-blue-500">Studio Pro</span></h1>
@@ -60,12 +61,12 @@
                 
                 <div id="step-2-scene" class="wizard-step hidden bg-gray-800 p-6 rounded-xl shadow-lg">
                     <h2 class="text-2xl font-bold text-blue-400 mb-4 border-b border-gray-700 pb-2">Step 2: Crea la Scena</h2>
-                    <div id="background-controls">
+                    <div>
                         <label for="bg-prompt-input" class="block mb-2 text-sm font-medium text-gray-400">Descrivi lo sfondo che vuoi creare:</label>
                         <div class="flex items-center gap-2 mb-2">
                             <input type="text" id="bg-prompt-input" placeholder="Es: foresta incantata al tramonto..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-gray-300">
                         </div>
-                        <label for="auto-enhance-prompt-toggle" class="toggle-label flex items-center justify-between mb-4">
+                        <label class="toggle-label flex items-center justify-between mb-4 cursor-pointer">
                             <span class="text-gray-300">Miglioramento Automatico Prompt ✨</span>
                             <div class="relative"><input type="checkbox" id="auto-enhance-prompt-toggle" class="toggle-checkbox sr-only"><div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div></div>
                         </label>
@@ -77,7 +78,7 @@
                 <div id="step-3-upscale" class="wizard-step hidden bg-gray-800 p-6 rounded-xl shadow-lg">
                     <h2 class="text-2xl font-bold text-blue-400 mb-4 border-b border-gray-700 pb-2">Step 3: Upscale e Dettaglio</h2>
                     <p class="text-gray-400 mb-4">La tua scena è pronta. Ora puoi migliorarne la risoluzione e aggiungere dettagli.</p>
-                    <label for="enable-hires-upscale-toggle" class="toggle-label flex items-center justify-between mb-4 p-3 bg-gray-900 rounded-lg">
+                    <label class="toggle-label flex items-center justify-between mb-4 p-3 bg-gray-900 rounded-lg cursor-pointer">
                         <span class="text-gray-300 font-medium">Attiva Hi-Res Upscale (Lento)</span>
                         <div class="relative">
                             <input type="checkbox" id="enable-hires-upscale-toggle" class="toggle-checkbox sr-only" checked>
@@ -85,7 +86,7 @@
                         </div>
                     </label>
                     <div class="mb-4">
-                        <label for="tile-denoising-slider" class="block text-sm font-medium text-gray-400 mb-2">Forza Detailing Tile (Denoising Strength): <span id="tile-denoising-value">0.40</span></label>
+                        <label for="tile-denoising-slider" class="block text-sm font-medium text-gray-400 mb-2">Forza Detailing (Denoising): <span id="tile-denoising-value">0.40</span></label>
                         <input type="range" id="tile-denoising-slider" min="0.0" max="1.0" step="0.05" value="0.4" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer range-lg">
                     </div>
                     <button id="start-upscale-btn" class="btn btn-primary w-full mt-4 text-white font-bold py-3 px-4 rounded-lg">🚀 Avvia Upscale e Detailing</button>
@@ -97,7 +98,7 @@
                     
                     <div class="mb-6">
                         <h3 class="text-xl font-semibold text-gray-300 mb-3">A. Face Swap Mirato</h3>
-                        <label class="toggle-label flex items-center justify-between mb-2 text-sm">
+                        <label class="toggle-label flex items-center justify-between mb-2 text-sm cursor-pointer">
                             <span class="text-gray-400">Mostra riquadri selezione volto</span>
                             <div class="relative"><input type="checkbox" id="toggle-face-boxes" class="toggle-checkbox sr-only" checked><div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div></div>
                         </label>
@@ -133,12 +134,11 @@
                         <div class="mb-2">
                             <input type="search" id="sticker-search-input" placeholder="Cerca sticker..." class="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-sm text-gray-300">
                         </div>
-                        <div id="sticker-gallery" class="p-2 bg-gray-900 rounded-lg h-40 overflow-y-auto">
-                            </div>
+                        <div id="sticker-gallery" class="p-2 bg-gray-900 rounded-lg h-40 overflow-y-auto"></div>
                         <div id="sticker-controls" class="flex justify-center gap-2 mt-2">
                             <button id="sticker-delete-btn" class="btn text-xs bg-red-800 hover:bg-red-700 disabled:opacity-50" disabled>Elimina Sticker</button>
                             <button id="sticker-front-btn" class="btn text-xs bg-gray-600 hover:bg-gray-500 disabled:opacity-50" disabled>Porta Avanti</button>
-                            <button id="sticker-back-btn" class="btn text-xs bg-gray-600 hover:bg-gray-500 disabled:opacity-50">Porta Indietro</button>
+                            <button id="sticker-back-btn" class="btn text-xs bg-gray-600 hover:bg-gray-500 disabled:opacity-50" disabled>Porta Indietro</button>
                         </div>
                     </div>
 
@@ -200,20 +200,29 @@
 
             <div id="result-column" class="bg-gray-800 p-6 rounded-xl shadow-lg lg:sticky top-8 self-start">
                 <h2 class="text-3xl font-bold mb-6 text-center text-white">Anteprima</h2>
-                <div class="relative flex justify-center items-center mb-6 bg-gray-900 rounded-lg min-h-[400px] p-2">
-                    <img id="result-image-display" src="" alt="Risultato" class="rounded-lg max-w-full h-auto shadow-md hidden z-0">
-                    <canvas id="meme-canvas" class="hidden rounded-lg max-w-full h-auto shadow-md"></canvas>
+                <div class="relative flex justify-center items-center mb-6 bg-gray-900 rounded-lg min-h-[400px] p-2 aspect-w-1 aspect-h-1">
+                    <img id="result-image-display" src="" alt="Risultato" class="rounded-lg max-w-full max-h-[80vh] h-auto shadow-md hidden z-0 object-contain">
+                    <canvas id="meme-canvas" class="hidden rounded-lg max-w-full max-h-[80vh] h-auto shadow-md object-contain"></canvas>
                     <div id="target-face-boxes-container" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></div>
                     <p id="result-placeholder" class="text-gray-500">Il risultato del processo apparirà qui...</p>
                 </div>
+                
                 <div class="flex justify-center items-center gap-2 flex-wrap">
-                    <a id="download-btn" href="#" download="pro-result.png" class="hidden items-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica</a>
+                    <a id="download-btn" href="#" download="pro-meme-result-static.png" class="hidden items-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica PNG</a>
+                    
+                    <button id="download-anim-btn" class="hidden items-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica Animato</button>
+                    <select id="anim-fmt" class="hidden bg-gray-700 text-sm text-white rounded-full px-3 py-2 shadow-lg cursor-pointer">
+                        <option value="mp4">MP4</option>
+                        <option value="gif">GIF</option>
+                    </select>
+                    
                     <button id="share-btn" class="hidden items-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
                             <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
                         </svg>
                         Condividi
                     </button>
+
                     <button id="reset-all-btn" class="btn bg-red-800 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Reset Totale</button>
                 </div>
             </div>

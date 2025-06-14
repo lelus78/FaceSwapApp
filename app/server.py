@@ -7,6 +7,8 @@ import requests
 import traceback
 import gzip
 import json
+import uuid
+import subprocess
 
 import torch
 import insightface
@@ -18,10 +20,19 @@ from controlnet_aux import CannyDetector
 from PIL import Image
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
-from flask import Flask, request, send_file, jsonify, render_template, current_app
+from flask import Flask, request, send_file, jsonify, render_template, current_app, url_for
 from flask_cors import CORS
 from app.meme_studio import meme_bp
 from dotenv import load_dotenv
+
+# Prova a importare imageio_ffmpeg e ottieni il percorso dell'eseguibile
+try:
+    import imageio_ffmpeg
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+except ImportError:
+    print(" [ATTENZIONE] imageio_ffmpeg non è installato. Le funzionalità video non saranno disponibili.")
+    ffmpeg_path = None
+
 
 # === CONFIGURAZIONE GLOBALE ===
 CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
@@ -262,11 +273,66 @@ def create_app():
             traceback.print_exc()
             return jsonify({"error": f"Errore durante il miglioramento del prompt: {e}"}), 500
 
-    # Questa funzione è già stata spostata nel middleware in run.py,
-    # ma aggiungerla anche qui fornisce un ulteriore livello di sicurezza.
+    # === BLOCCO SPOSTATO ALL'INTERNO DI CREATE_APP ===
+    
+    # Crea la cartella per i risultati se non esiste
+    RESULT_DIR = os.path.join(app.root_path, 'static', 'results')
+    os.makedirs(RESULT_DIR, exist_ok=True)
+
+    def webm_to_mp4(webm_path: str) -> str:
+        if not ffmpeg_path:
+            raise RuntimeError("ffmpeg non trovato. Assicurati che imageio-ffmpeg sia installato.")
+        mp4_path = webm_path.replace('.webm', '.mp4')
+        cmd = [
+            ffmpeg_path, '-y',           # sovrascrivi se esiste
+            '-i', webm_path,
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            mp4_path
+        ]
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return mp4_path
+
+    @app.route('/save_result_video', methods=['POST'])
+    def save_result_video():
+        if not ffmpeg_path:
+            return jsonify({'error': 'ffmpeg non è configurato sul server'}), 500
+
+        fmt = request.args.get('fmt', 'mp4')      # "mp4" (default) o "gif"
+        raw = request.get_data()                  # blob WebM dal client
+        file_id = uuid.uuid4().hex
+        webm_path = os.path.join(RESULT_DIR, f'{file_id}.webm')
+        with open(webm_path, 'wb') as f:
+            f.write(raw)
+
+        try:
+            # ---------- conversione ----------
+            if fmt == 'mp4':
+                final_path = webm_to_mp4(webm_path)
+            elif fmt == 'gif':
+                palette = os.path.join(RESULT_DIR, f'{file_id}_pal.png')
+                subprocess.run([ffmpeg_path, '-y', '-i', webm_path,
+                                '-vf', 'fps=10,scale=480:-1:flags=lanczos,palettegen', palette], check=True)
+                gif_path = os.path.join(RESULT_DIR, f'{file_id}.gif')
+                subprocess.run([ffmpeg_path, '-y', '-i', webm_path, '-i', palette,
+                                '-lavfi', 'fps=10,scale=480:-1:flags=lanczos [x]; [x][1:v] paletteuse',
+                                gif_path], check=True)
+                final_path = gif_path
+            else:
+                final_path = webm_path  # restituiamo il WebM se il formato non è riconosciuto
+
+            # url_for richiede il contesto dell'applicazione per funzionare
+            file_url = url_for('static', filename=f'results/{os.path.basename(final_path)}', _external=True)
+            return jsonify({'url': file_url})
+        except (subprocess.CalledProcessError, RuntimeError) as e:
+            traceback.print_exc()
+            return jsonify({'error': f"Errore durante la conversione del video: {e}"}), 500
+        
+
     @app.after_request
     def add_pna_header(response):
         response.headers['Access-Control-Allow-Private-Network'] = 'true'
         return response
-
+    
+    # Restituisce l'istanza dell'app configurata
     return app

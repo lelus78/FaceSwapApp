@@ -184,7 +184,12 @@ body {
     color: white;
 }
 
-#result-image-display.shadow-share{
-  position:absolute; inset:0; z-index:50;
-  opacity:0; pointer-events:auto;
+
+
+#result-image-display.shadow-share {
+    position: absolute;
+    inset: 0;
+    z-index: 9999;       /* sopra tutte le face-box */
+    opacity: 0;
+    pointer-events: auto;
 }

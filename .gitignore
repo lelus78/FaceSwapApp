@@ -18,3 +18,4 @@ FaceSwapApp.zip
 
 # Ignora tutti gli sticker per velocizzare Git
 app/static/stickers/
+app/static/results/

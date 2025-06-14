@@ -94,3 +94,17 @@ export async function generateCaption(imageBlob, tone) {
     await handleResponse(response);
     return response.json();
 }
+
+export async function saveResultVideo(videoBlob, format) {
+    // L'URL include il formato desiderato (mp4 o gif) come parametro
+    const response = await fetch(`${BASE_URL}/save_result_video?fmt=${format}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/octet-stream' // Inviamo i dati grezzi del video
+        },
+        body: videoBlob,
+        cache: 'no-cache'
+    });
+    await handleResponse(response);
+    return response.json(); // Il server risponderà con un JSON contenente l'URL finale
+}
