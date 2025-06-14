@@ -92,8 +92,8 @@ Browse to [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
 ## Image exemple
 
-![alt text](image.png)
 ![alt text](image-1.png)
+![alt text](image.png)
 
 ## 🔧 Contributing
 
