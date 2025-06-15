@@ -204,6 +204,101 @@ def create_app():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.route('/prepare_subject', methods=['POST'])
+    def prepare_subject():
+        try:
+            if 'subject_image' not in request.files:
+                return jsonify(error="Immagine soggetto mancante."), 400
+            subject = normalize_image(Image.open(io.BytesIO(request.files['subject_image'].read())).convert("RGBA"))
+            processed = remove(subject)
+            buf = io.BytesIO()
+            processed.save(buf, format='PNG')
+            buf.seek(0)
+            return send_file(buf, mimetype='image/png')
+        except Exception as e:
+            traceback.print_exc(); return jsonify(error=str(e)), 500
+
+    @app.route('/create_scene', methods=['POST'])
+    def create_scene():
+        global pipe, canny_detector
+        try:
+            if 'subject_data' not in request.files or 'prompt' not in request.form:
+                return jsonify(error="Dati mancanti"), 400
+            ensure_pipeline_is_loaded()
+            subject = normalize_image(Image.open(io.BytesIO(request.files['subject_data'].read())).convert("RGB"))
+            mask = remove(subject, only_mask=True, post_process_mask=True)
+            canny_map = canny_detector(subject, low_threshold=50, high_threshold=150)
+            if canny_map.size != subject.size:
+                canny_map = canny_map.resize(subject.size, Image.Resampling.LANCZOS)
+            result = pipe(
+                prompt=request.form['prompt'],
+                image=subject,
+                mask_image=mask,
+                control_image=canny_map,
+                width=subject.width,
+                height=subject.height,
+                controlnet_conditioning_scale=0.8,
+                num_inference_steps=CFG_DETAIL_STEPS,
+                strength=1.0,
+                guidance_scale=10
+            ).images[0]
+            buf = io.BytesIO()
+            result.save(buf, format='PNG')
+            buf.seek(0)
+            return send_file(buf, mimetype='image/png')
+        except Exception as e:
+            traceback.print_exc(); return jsonify(error=str(e)), 500
+        finally:
+            pipe, canny_detector = None, None; release_vram()
+
+    @app.route('/detail_and_upscale', methods=['POST'])
+    def detail_and_upscale():
+        global pipe, canny_detector
+        try:
+            if 'scene_image' not in request.files:
+                return jsonify(error="Immagine mancante"), 400
+            enable_hires = request.form.get('enable_hires', 'true').lower() == 'true'
+            denoise = float(request.form.get('tile_denoising_strength', 0.3))
+            ensure_pipeline_is_loaded()
+            scene = normalize_image(Image.open(io.BytesIO(request.files['scene_image'].read())).convert("RGB"))
+            if enable_hires:
+                model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
+                upsampler = RealESRGANer(
+                    scale=2,
+                    model_path=os.path.join('models', 'RealESRGAN_x2plus.pth'),
+                    model=model,
+                    tile=512,
+                    tile_pad=10,
+                    pre_pad=0,
+                    half=True
+                )
+                img_cv = cv2.cvtColor(np.array(scene), cv2.COLOR_RGB2BGR)
+                output, _ = upsampler.enhance(img_cv, outscale=2)
+                scene = Image.fromarray(cv2.cvtColor(output, cv2.COLOR_BGR2RGB))
+            canny_map = canny_detector(scene, low_threshold=50, high_threshold=150)
+            if canny_map.size != scene.size:
+                canny_map = canny_map.resize(scene.size, Image.Resampling.LANCZOS)
+            result = pipe(
+                prompt="",
+                image=scene,
+                mask_image=None,
+                control_image=canny_map,
+                width=scene.width,
+                height=scene.height,
+                controlnet_conditioning_scale=1.0,
+                num_inference_steps=CFG_DETAIL_STEPS,
+                strength=denoise,
+                guidance_scale=5
+            ).images[0]
+            buf = io.BytesIO()
+            result.save(buf, format='PNG')
+            buf.seek(0)
+            return send_file(buf, mimetype='image/png')
+        except Exception as e:
+            traceback.print_exc(); return jsonify(error=str(e)), 500
+        finally:
+            pipe, canny_detector = None, None; release_vram()
+
     @app.route('/analyze_parts', methods=['POST'])
     def analyze_parts():
         global yolo_parser
