@@ -43,7 +43,6 @@ except ImportError:
 # === CONFIGURAZIONE GLOBALE ===
 DEBUG_MODE = True 
 CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
-CFG_SAMPLER = "DPM++"
 CFG_DETAIL_STEPS = 18
 MAX_IMAGE_DIMENSION = 1280
 
