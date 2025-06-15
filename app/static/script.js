@@ -217,26 +217,94 @@ async function handlePerformSwap() {
     finally { finishProgressBar(); }
 }
 
-async function handleGenerateHair() {
-    const imageToInpaint = finalImageWithSwap || upscaledImageBlob || sceneImageBlob || processedSubjectBlob || subjectFile;
-    if (!imageToInpaint) {
-        return showError("Immagine Mancante", "Nessuna immagine nell'anteprima su cui generare.");
-    }
-    const prompt = dom.inpaintingPromptInput.value;
-    if (!prompt) {
-        return showError("Prompt Mancante", "Descrivi cosa vuoi generare, per esempio 'capelli biondi ricci'.");
+/**
+ * Gestisce il click sul pulsante "Analizza Parti Corpo".
+ * Chiama l'API per ottenere le parti rilevabili e poi le renderizza.
+ */
+async function handleAnalyzeParts() {
+    const imageToAnalyze = finalImageWithSwap || upscaledImageBlob || sceneImageBlob || processedSubjectBlob || subjectFile;
+    if (!imageToAnalyze) {
+        return showError("Immagine Mancante", "Carica un'immagine prima di analizzarla.");
     }
 
-    startProgressBar("✨ Generazione AI Avanzata...", 120);
+    startProgressBar("🤖 Analisi AI delle parti del corpo...", 15);
+    dom.analyzePartsBtn.disabled = true;
+
     try {
-        const resultBlob = await api.generateWithMask(imageToInpaint, prompt);
-        finalImageWithSwap = resultBlob; 
+        const result = await api.analyzeParts(imageToAnalyze);
+        if (result.parts && result.parts.length > 0) {
+            renderDynamicPrompts(result.parts);
+            dom.generateAllBtn.classList.remove('hidden');
+            dom.generateAllBtn.disabled = false;
+        } else {
+            showError("Nessuna Parte Trovata", "Il modello non ha rilevato parti umane modificabili in questa immagine.");
+        }
+    } catch (err) {
+        showError("Errore Analisi", err.message);
+    } finally {
+        finishProgressBar();
+        dom.analyzePartsBtn.disabled = false;
+    }
+}
+
+/**
+ * Crea e visualizza dinamicamente i campi di input per ogni parte rilevata.
+ * @param {string[]} parts - Un array di nomi di parti, es. ['hair', 'outfit'].
+ */
+function renderDynamicPrompts(parts) {
+    const container = dom.dynamicPromptsContainer;
+    container.innerHTML = ''; // Pulisce il contenitore
+    
+    parts.forEach(part => {
+        // Crea l'HTML per ogni riga di prompt
+        const prettyPartName = part.charAt(0).toUpperCase() + part.slice(1); // Es. "hair" -> "Hair"
+        const promptRow = `
+            <div class="flex items-center gap-2">
+                <label for="prompt-${part}" class="w-1/4 text-sm text-right text-gray-400">${prettyPartName}:</label>
+                <input type="text" id="prompt-${part}" data-part-name="${part}" class="prompt-input w-3/4 bg-gray-900 border border-gray-600 rounded-lg p-2 text-sm text-gray-300" placeholder="Descrivi modifica per ${part}...">
+                <button class="enhance-part-btn btn btn-secondary text-white font-bold p-2 rounded-lg" data-part-name="${part}" title="Migliora prompt con AI">✨</button>
+            </div>
+        `;
+        container.innerHTML += promptRow;
+    });
+}
+
+/**
+ * Raccoglie tutti i prompt inseriti dall'utente e avvia la generazione finale multi-parte.
+ */
+async function handleGenerateAll() {
+    const imageToInpaint = finalImageWithSwap || upscaledImageBlob || sceneImageBlob || processedSubjectBlob || subjectFile;
+    if (!imageToInpaint) {
+        return showError("Immagine Mancante", "Non c'è un'immagine su cui applicare le modifiche.");
+    }
+
+    const prompts = {};
+    const inputElements = dom.dynamicPromptsContainer.querySelectorAll('.prompt-input');
+    
+    inputElements.forEach(input => {
+        const partName = input.dataset.partName;
+        if (input.value) { // Aggiungi solo se l'utente ha scritto qualcosa
+            prompts[partName] = input.value;
+        }
+    });
+
+    if (Object.keys(prompts).length === 0) {
+        return showError("Nessun Prompt", "Scrivi una descrizione per almeno una parte per poter generare le modifiche.");
+    }
+
+    startProgressBar("🎨 Generazione Multi-Parte in corso...", 120);
+    dom.generateAllBtn.disabled = true;
+
+    try {
+        const resultBlob = await api.generateAllParts(imageToInpaint, prompts);
+        finalImageWithSwap = resultBlob;
         displayImage(resultBlob, dom.resultImageDisplay);
         detectAndDrawFaces(resultBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, targetFaces, 'target');
     } catch (err) {
-        showError("Errore Generazione Avanzata", err.message);
+        showError("Errore Generazione", err.message);
     } finally {
         finishProgressBar();
+        dom.generateAllBtn.disabled = false;
     }
 }
 
@@ -461,7 +529,10 @@ function assignDomElements() {
         'meme-section', 'caption-text-input', 'caption-btn', 'tone-buttons-container',
         'font-family-select', 'font-size-slider', 'font-size-value',
         'font-color-input', 'stroke-color-input', 'position-buttons', 'text-bg-buttons',
-        'inpainting-prompt-input', 'generate-hair-btn'
+        'inpainting-prompt-input', 'generate-hair-btn',
+        'analyze-parts-btn',
+        'dynamic-prompts-container',
+        'generate-all-btn'
 
     ];
     ids.forEach(id => {
@@ -480,7 +551,6 @@ function setupEventListeners() {
     dom.gotoStep3Btn.addEventListener('click', () => goToStep(3));
     dom.startUpscaleBtn.addEventListener('click', handleUpscaleAndDetail);
     dom.captionBtn.addEventListener('click', handleGenerateCaption);
-    dom.generateHairBtn.addEventListener('click', handleGenerateHair);
     dom.tileDenoisingSlider.addEventListener('input', e => dom.tileDenoisingValue.textContent = parseFloat(e.target.value).toFixed(2));
     dom.skipUpscaleBtn.addEventListener('click', () => {
         upscaledImageBlob = sceneImageBlob;
@@ -504,6 +574,39 @@ function setupEventListeners() {
             activeFilter = e.target.dataset.filter;
             dom.resultImageDisplay.style.filter = activeFilter; // Applica il filtro anche all'immagine base
             updateMemePreview();
+        }
+});
+    // Listener per il pulsante statico "Analizza Parti"
+    dom.analyzePartsBtn.addEventListener('click', handleAnalyzeParts);
+    
+    // Listener per il pulsante statico "Genera Modifiche"
+    dom.generateAllBtn.addEventListener('click', handleGenerateAll);
+
+    // Listener per i pulsanti "Migliora" creati dinamicamente
+    // Usiamo l'event delegation per gestire i click su elementi che ancora non esistono.
+    dom.dynamicPromptsContainer.addEventListener('click', async (e) => {
+        // Controlla se l'elemento cliccato è un pulsante per migliorare il prompt
+        if (e.target && e.target.classList.contains('enhance-part-btn')) {
+            const button = e.target;
+            const partName = button.dataset.partName;
+            const input = document.getElementById(`prompt-${partName}`);
+            
+            if (!input || !input.value) {
+                return showError("Prompt Vuoto", "Scrivi prima un'idea da migliorare.");
+            }
+            
+            button.disabled = true;
+            startProgressBar(`✨ Miglioramento prompt per ${partName}...`, 10);
+            
+            try {
+                const result = await api.enhancePartPrompt(partName, input.value);
+                input.value = result.enhanced_prompt;
+            } catch (err) {
+                showError("Errore Miglioramento Prompt", err.message);
+            } finally {
+                finishProgressBar();
+                button.disabled = false;
+            }
         }
     });
     ['captionTextInput', 'fontFamilySelect', 'fontColorInput', 'strokeColorInput'].forEach(id => dom[id].addEventListener('input', updateMemePreview));
