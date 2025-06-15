@@ -1,5 +1,10 @@
-# run.py - VERSIONE FINALE E CORRETTA
+import os
 from app.server import create_app
+from dotenv import load_dotenv
+load_dotenv()
+from app.server import create_app
+app = create_app()
+
 
 # --- Blocco Middleware per il fix "Private Network Access" di Chrome ---
 class PrivateNetworkAccessMiddleware:
