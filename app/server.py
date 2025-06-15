@@ -138,26 +138,25 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
     target_idx = [idx_map[p] for p in parts_to_mask if p in idx_map]
     if not target_idx: return None
         
-
+ 
     final_mask_np = None
 
     if getattr(res, "masks", None) is not None and getattr(res.masks, "data", None) is not None:
-        # If the YOLO model is a segmentation model, combine its masks directly
-        mask_data = res.masks.data
-        if isinstance(mask_data, torch.Tensor):
-            mask_data = mask_data.cpu().numpy()
-        if mask_data.ndim == 4:  # (B, C, H, W)
-            mask_data = mask_data[0]
-        combined = np.zeros(mask_data.shape[1:], dtype=np.uint8)
-        for i, cls_idx in enumerate(res.boxes.cls.tolist()):
-            if int(cls_idx) in target_idx and res.boxes.conf[i].item() > conf_threshold:
-                combined = np.maximum(combined, mask_data[i])
+        # Prefer YOLO segmentation masks when available. Use polygon coordinates
+        # to avoid letterboxing misalignment issues.
+        mask_polys = res.masks.xy  # already scaled to original image size
+        combined = np.zeros((pil_img.height, pil_img.width), dtype=np.uint8)
+        for poly, cls_idx, conf in zip(mask_polys, res.boxes.cls.tolist(), res.boxes.conf.tolist()):
+            conf_val = conf.item() if hasattr(conf, "item") else float(conf)
+            if int(cls_idx) in target_idx and conf_val > conf_threshold:
+                poly_int = np.round(np.array(poly)).astype(np.int32)
+                cv2.fillPoly(combined, [poly_int.reshape(-1, 1, 2)], 255)
         if combined.sum() > 0:
-            final_mask_np = (combined > 0).astype(np.uint8) * 255
-            if final_mask_np.shape != (pil_img.height, pil_img.width):
-                final_mask_np = cv2.resize(final_mask_np, (pil_img.width, pil_img.height), interpolation=cv2.INTER_NEAREST)
+            final_mask_np = combined
     if final_mask_np is None:
+
       
+        ip-adapter
         detected_boxes = [b.xyxy[0].cpu().numpy() for b in res.boxes if int(b.cls.item()) in target_idx and b.conf.item() > conf_threshold]
         if not detected_boxes:
             return None
