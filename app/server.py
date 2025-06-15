@@ -154,8 +154,22 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
     )
     if masks is None: return None
     
-    best_mask = masks[0, torch.argmax(scores).item(), :, :].cpu().numpy()
-    final_mask_np = (best_mask).astype(np.uint8) * 255
+    # 'predict' may return either NumPy arrays or PyTorch tensors. Ensure we
+    # always work with NumPy for downstream OpenCV operations.
+    idx = int(np.array(scores).argmax()) if not isinstance(scores, torch.Tensor) else int(torch.argmax(scores).item())
+
+    if isinstance(masks, torch.Tensor):
+        masks_np = masks.cpu().numpy()
+    else:
+        masks_np = np.array(masks)
+
+    # SAM sometimes returns shape (1, N, H, W) or (N, H, W); handle both
+    if masks_np.ndim == 4:
+        best_mask = masks_np[0, idx]
+    else:
+        best_mask = masks_np[idx]
+
+    final_mask_np = best_mask.astype(np.uint8) * 255
     
     closed_mask_np = cv2.morphologyEx(final_mask_np, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     dilated_mask_np = cv2.dilate(closed_mask_np, np.ones((10, 10), np.uint8), iterations=1)
