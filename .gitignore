@@ -20,3 +20,6 @@ FaceSwapApp.zip
 app/static/stickers/
 app/static/results/
 temp/masks
+
+# Temporary debug images
+app/temp/
