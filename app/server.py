@@ -18,7 +18,7 @@ from gfpgan import GFPGANer
 from rembg import remove
 from diffusers import StableDiffusionXLControlNetInpaintPipeline, ControlNetModel, DPMSolverMultistepScheduler
 from controlnet_aux import CannyDetector
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from ultralytics import YOLO
@@ -262,6 +262,7 @@ def create_app():
             ensure_pipeline_is_loaded()
             subject = normalize_image(Image.open(io.BytesIO(request.files['subject_data'].read())).convert("RGB"))
             mask = remove(subject, only_mask=True, post_process_mask=True)
+            mask = ImageOps.invert(mask.convert("L"))
             canny_map = canny_detector(subject, low_threshold=50, high_threshold=150)
             if canny_map.size != subject.size:
                 canny_map = canny_map.resize(subject.size, Image.Resampling.LANCZOS)
