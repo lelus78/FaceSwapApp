@@ -138,38 +138,55 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
     target_idx = [idx_map[p] for p in parts_to_mask if p in idx_map]
     if not target_idx: return None
         
-    detected_boxes = [b.xyxy[0].cpu().numpy() for b in res.boxes if int(b.cls.item()) in target_idx and b.conf.item() > conf_threshold]
-    if not detected_boxes: return None
+    final_mask_np = None
 
-    box = detected_boxes[0]
-    center_point = np.array([[(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]])
-    point_labels = np.array([1])
-    
-    sam_predictor.set_image(np.array(pil_img.convert("RGB")))
-    
-    masks, scores, _ = sam_predictor.predict(
-        point_coords=center_point,
-        point_labels=point_labels,
-        multimask_output=True,
-    )
-    if masks is None: return None
-    
-    # 'predict' may return either NumPy arrays or PyTorch tensors. Ensure we
-    # always work with NumPy for downstream OpenCV operations.
-    idx = int(np.array(scores).argmax()) if not isinstance(scores, torch.Tensor) else int(torch.argmax(scores).item())
+    if getattr(res, "masks", None) is not None and getattr(res.masks, "data", None) is not None:
+        # Prefer YOLO segmentation masks when available. Use polygon coordinates
+        # to avoid letterboxing misalignment issues.
+        mask_polys = res.masks.xy  # already scaled to original image size
+        combined = np.zeros((pil_img.height, pil_img.width), dtype=np.uint8)
+        for poly, cls_idx, conf in zip(mask_polys, res.boxes.cls.tolist(), res.boxes.conf.tolist()):
+            conf_val = conf.item() if hasattr(conf, "item") else float(conf)
+            if int(cls_idx) in target_idx and conf_val > conf_threshold:
+                poly_int = np.round(np.array(poly)).astype(np.int32)
+                cv2.fillPoly(combined, [poly_int.reshape(-1, 1, 2)], 255)
+        if combined.sum() > 0:
+            final_mask_np = combined
+    if final_mask_np is None:
+        detected_boxes = [b.xyxy[0].cpu().numpy() for b in res.boxes if int(b.cls.item()) in target_idx and b.conf.item() > conf_threshold]
+        if not detected_boxes:
+            return None
 
-    if isinstance(masks, torch.Tensor):
-        masks_np = masks.cpu().numpy()
-    else:
-        masks_np = np.array(masks)
+        box = detected_boxes[0]
+        center_point = np.array([[(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]])
+        point_labels = np.array([1])
 
-    # SAM sometimes returns shape (1, N, H, W) or (N, H, W); handle both
-    if masks_np.ndim == 4:
-        best_mask = masks_np[0, idx]
-    else:
-        best_mask = masks_np[idx]
+        sam_predictor.set_image(np.array(pil_img.convert("RGB")))
 
-    final_mask_np = best_mask.astype(np.uint8) * 255
+        masks, scores, _ = sam_predictor.predict(
+            point_coords=center_point,
+            point_labels=point_labels,
+            multimask_output=True,
+        )
+        if masks is None:
+            return None
+
+        idx = int(np.array(scores).argmax()) if not isinstance(scores, torch.Tensor) else int(torch.argmax(scores).item())
+
+        if isinstance(masks, torch.Tensor):
+            masks_np = masks.cpu().numpy()
+        else:
+            masks_np = np.array(masks)
+
+        if masks_np.ndim == 4:
+            best_mask = masks_np[0, idx]
+        else:
+            best_mask = masks_np[idx]
+
+        final_mask_np = best_mask.astype(np.uint8) * 255
+
+    if final_mask_np is None:
+        return None
     
     closed_mask_np = cv2.morphologyEx(final_mask_np, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     dilated_mask_np = cv2.dilate(closed_mask_np, np.ones((10, 10), np.uint8), iterations=1)
