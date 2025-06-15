@@ -151,6 +151,8 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
                 combined = np.maximum(combined, mask_data[i])
         if combined.sum() > 0:
             final_mask_np = (combined > 0).astype(np.uint8) * 255
+            if final_mask_np.shape != (pil_img.height, pil_img.width):
+                final_mask_np = cv2.resize(final_mask_np, (pil_img.width, pil_img.height), interpolation=cv2.INTER_NEAREST)
         else:
             final_mask_np = None
     else:
