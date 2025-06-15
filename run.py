@@ -1,9 +1,8 @@
 import os
-from app.server import create_app
 from dotenv import load_dotenv
-load_dotenv()
 from app.server import create_app
-app = create_app()
+
+load_dotenv()
 
 
 # --- Blocco Middleware per il fix "Private Network Access" di Chrome ---
