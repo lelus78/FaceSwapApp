@@ -100,3 +100,23 @@ Each agent is designed to accept the output of the previous one, forming a fluid
 * Support for multi-agent orchestration using task queues
 * Multi-subject pipeline support
 * Agent status monitoring with async WebSocket updates
+
+---
+
+## Style & Coding Standards
+
+* All Python code follows [PEP-8](https://peps.python.org/pep-0008/) conventions.
+* Functions and agents are organized by responsibility and named accordingly.
+* Async tasks (planned) will follow snake\_case naming and centralized logging for monitoring.
+
+---
+
+## Testing Notes
+
+This project currently does not include unit or integration tests for the individual agents.
+
+**Planned testing strategy:**
+
+* Snapshot testing for image output of each agent
+* API response validation using Flask test client
+* Manual visual regression checks for key image stages
