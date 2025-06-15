@@ -24,7 +24,7 @@ from realesrgan import RealESRGANer
 from ultralytics import YOLO
 from flask import Flask, request, send_file, jsonify, render_template, current_app, url_for
 from flask_cors import CORS
-from app.meme_studio import meme_bp
+from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
 from dotenv import load_dotenv
 
 try:
@@ -208,6 +208,7 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
 def create_app():
     app = Flask(__name__)
     load_dotenv()
+    app.config['GEMINI_API_KEY'] = os.getenv('GEMINI_API_KEY')
     CORS(app, resources={r"/*": {"origins": "*"}})
     app.register_blueprint(meme_bp)
 
@@ -332,6 +333,78 @@ def create_app():
             traceback.print_exc(); return jsonify(error=str(e)), 500
         finally:
             pipe, canny_detector = None, None; release_vram()
+
+    @app.route('/enhance_prompt', methods=['POST'])
+    def enhance_prompt():
+        api_key = app.config.get('GEMINI_API_KEY')
+        if not api_key:
+            return jsonify(error="Gemini API key not configured"), 400
+        try:
+            data = request.get_json()
+            base64_image = data.get('image_data')
+            prompt_text = data.get('prompt_text', '')
+            if not base64_image:
+                return jsonify(error="image_data missing"), 400
+            system_prompt = (
+                "Sei un esperto prompt engineer. Migliora il seguente prompt in italiano "
+                "basandoti sull'immagine fornita. Restituisci solo il prompt ottimizzato."
+            )
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": system_prompt + "\nUtente: " + prompt_text},
+                        {"inlineData": {"mimeType": "image/jpeg", "data": base64_image}}
+                    ]
+                }]
+            }
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
+            resp = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+            resp.raise_for_status()
+            result = resp.json()
+            if result.get('candidates'):
+                text = result['candidates'][0]['content']['parts'][0]['text'].strip('"')
+                return jsonify(enhanced_prompt=text)
+            return jsonify(error="No prompt generated"), 500
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify(error=f"Gemini error: {e}"), 500
+
+    @app.route('/enhance_part_prompt', methods=['POST'])
+    def enhance_part_prompt():
+        api_key = app.config.get('GEMINI_API_KEY')
+        if not api_key:
+            return jsonify(error="Gemini API key not configured"), 400
+        try:
+            data = request.get_json()
+            part_name = data.get('part_name', 'subject')
+            prompt_text = data.get('prompt_text', '')
+            base64_image = data.get('image_data')
+            if not base64_image:
+                return jsonify(error="image_data missing"), 400
+            system_prompt = (
+                f"Migliora il prompt per la parte '{part_name}'. "
+                "Rispondi in italiano con un testo adatto a Stable Diffusion. "
+                "Restituisci solo il prompt ottimizzato."
+            )
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": system_prompt + "\nUtente: " + prompt_text},
+                        {"inlineData": {"mimeType": "image/jpeg", "data": base64_image}}
+                    ]
+                }]
+            }
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
+            resp = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+            resp.raise_for_status()
+            result = resp.json()
+            if result.get('candidates'):
+                text = result['candidates'][0]['content']['parts'][0]['text'].strip('"')
+                return jsonify(enhanced_prompt=text)
+            return jsonify(error="No prompt generated"), 500
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify(error=f"Gemini error: {e}"), 500
 
     @app.route('/analyze_parts', methods=['POST'])
     def analyze_parts():
