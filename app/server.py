@@ -149,7 +149,7 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
     sam_predictor.set_image(np.array(pil_img.convert("RGB")))
     
     masks, scores, _ = sam_predictor.predict(
-        point_coords=np.array(point_coords),
+        point_coords=center_point,
         point_labels=np.array(point_labels),
         multimask_output=True,
     )
