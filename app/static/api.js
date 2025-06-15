@@ -17,6 +17,20 @@ async function handleResponse(response) {
     return response;
 }
 
+// Funzione helper per convertire Blob in Base64
+async function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            // Rimuovi il prefisso "data:image/jpeg;base64,"
+            const base64String = reader.result.split(',')[1];
+            resolve(base64String);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
 export async function getStickers() {
     const response = await fetch(`${BASE_URL}/api/stickers`);
     await handleResponse(response);
@@ -69,10 +83,9 @@ export async function performSwap(targetImageBlob, sourceImageFile, sourceIndex,
     return response.blob();
 }
 
+// Modificata per inviare l'immagine in base64
 export async function enhancePrompt(imageBlob, userPrompt) {
-    const reader = new FileReader();
-    reader.readAsDataURL(imageBlob);
-    const base64ImageData = await new Promise(resolve => { reader.onloadend = () => resolve(reader.result.split(',')[1]); });
+    const base64ImageData = await blobToBase64(imageBlob);
     const response = await fetch(`${BASE_URL}/enhance_prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -82,10 +95,20 @@ export async function enhancePrompt(imageBlob, userPrompt) {
     return response.json();
 }
 
+// Modificata per inviare l'immagine in base64
+export async function enhancePartPrompt(partName, userPrompt, imageBlob) {
+    const base64ImageData = await blobToBase64(imageBlob);
+    const response = await fetch(`${BASE_URL}/enhance_part_prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ part_name: partName, prompt_text: userPrompt, image_data: base64ImageData })
+    });
+    await handleResponse(response);
+    return response.json();
+}
+
 export async function generateCaption(imageBlob, tone) {
-    const reader = new FileReader();
-    reader.readAsDataURL(imageBlob);
-    const base64ImageData = await new Promise(resolve => { reader.onloadend = () => resolve(reader.result.split(',')[1]); });
+    const base64ImageData = await blobToBase64(imageBlob); // Usa la nuova helper
     const response = await fetch(`${BASE_URL}/meme/generate_caption`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,15 +119,46 @@ export async function generateCaption(imageBlob, tone) {
 }
 
 export async function saveResultVideo(videoBlob, format) {
-    // L'URL include il formato desiderato (mp4 o gif) come parametro
     const response = await fetch(`${BASE_URL}/save_result_video?fmt=${format}`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/octet-stream' // Inviamo i dati grezzi del video
+            'Content-Type': 'application/octet-stream' 
         },
         body: videoBlob,
         cache: 'no-cache'
     });
     await handleResponse(response);
-    return response.json(); // Il server risponderà con un JSON contenente l'URL finale
+    return response.json(); 
+}
+
+export async function generateWithMask(imageBlob, partName, prompt) { // Aggiunto partName qui
+    const formData = new FormData();
+    formData.append('image', imageBlob);
+    formData.append('part_name', partName); // Passa part_name
+    formData.append('prompt', prompt);
+    // Cambiato l'endpoint da generate_with_mask a generate_all_parts
+    // per coerenza con il nuovo inpainting basato sul crop
+    const response = await fetch(`${BASE_URL}/generate_all_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
+    await handleResponse(response);
+    return response.blob();
+}
+
+export async function analyzeParts(imageBlob) {
+    const formData = new FormData();
+    formData.append('image', imageBlob);
+    const response = await fetch(`${BASE_URL}/analyze_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
+    await handleResponse(response);
+    return response.json();
+}
+
+export async function generateAllParts(imageBlob, prompts) {
+    const formData = new FormData();
+    formData.append('image', imageBlob);
+    formData.append('prompts', JSON.stringify(prompts));
+    
+    // NOTA: il problema precedente era che questo chiamava /generate_with_mask.
+    // Assicurati che qui chiami generate_all_parts
+    const response = await fetch(`${BASE_URL}/generate_all_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
+    await handleResponse(response);
+    return response.blob();
 }
