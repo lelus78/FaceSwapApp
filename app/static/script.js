@@ -217,6 +217,29 @@ async function handlePerformSwap() {
     finally { finishProgressBar(); }
 }
 
+async function handleGenerateHair() {
+    const imageToInpaint = finalImageWithSwap || upscaledImageBlob || sceneImageBlob || processedSubjectBlob || subjectFile;
+    if (!imageToInpaint) {
+        return showError("Immagine Mancante", "Nessuna immagine nell'anteprima su cui generare.");
+    }
+    const prompt = dom.inpaintingPromptInput.value;
+    if (!prompt) {
+        return showError("Prompt Mancante", "Descrivi cosa vuoi generare, per esempio 'capelli biondi ricci'.");
+    }
+
+    startProgressBar("✨ Generazione AI Avanzata...", 120);
+    try {
+        const resultBlob = await api.generateWithMask(imageToInpaint, prompt);
+        finalImageWithSwap = resultBlob; 
+        displayImage(resultBlob, dom.resultImageDisplay);
+        detectAndDrawFaces(resultBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, targetFaces, 'target');
+    } catch (err) {
+        showError("Errore Generazione Avanzata", err.message);
+    } finally {
+        finishProgressBar();
+    }
+}
+
 // Aggiungi questa funzione in script.js
 async function handleGenerateCaption() {
     const imageToCaption = finalImageWithSwap || upscaledImageBlob || sceneImageBlob || processedSubjectBlob || subjectFile;
@@ -437,7 +460,9 @@ function assignDomElements() {
         'sticker-front-btn', 'sticker-back-btn',
         'meme-section', 'caption-text-input', 'caption-btn', 'tone-buttons-container',
         'font-family-select', 'font-size-slider', 'font-size-value',
-        'font-color-input', 'stroke-color-input', 'position-buttons', 'text-bg-buttons'
+        'font-color-input', 'stroke-color-input', 'position-buttons', 'text-bg-buttons',
+        'inpainting-prompt-input', 'generate-hair-btn'
+
     ];
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -455,6 +480,7 @@ function setupEventListeners() {
     dom.gotoStep3Btn.addEventListener('click', () => goToStep(3));
     dom.startUpscaleBtn.addEventListener('click', handleUpscaleAndDetail);
     dom.captionBtn.addEventListener('click', handleGenerateCaption);
+    dom.generateHairBtn.addEventListener('click', handleGenerateHair);
     dom.tileDenoisingSlider.addEventListener('input', e => dom.tileDenoisingValue.textContent = parseFloat(e.target.value).toFixed(2));
     dom.skipUpscaleBtn.addEventListener('click', () => {
         upscaledImageBlob = sceneImageBlob;

@@ -108,3 +108,12 @@ export async function saveResultVideo(videoBlob, format) {
     await handleResponse(response);
     return response.json(); // Il server risponderà con un JSON contenente l'URL finale
 }
+
+export async function generateWithMask(imageBlob, prompt) {
+    const formData = new FormData();
+    formData.append('image', imageBlob);
+    formData.append('prompt', prompt);
+    const response = await fetch(`${BASE_URL}/generate_with_mask`, { method: 'POST', body: formData, cache: 'no-cache' });
+    await handleResponse(response);
+    return response.blob();
+}

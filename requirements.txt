@@ -58,12 +58,14 @@ onnxruntime-gpu==1.22.0
 opencv-python==4.11.0.86
 opencv-python-headless==4.11.0.86
 packaging==25.0
+pandas==2.3.0
 pillow==11.0.0
 platformdirs==4.3.8
 pooch==1.8.2
 prettytable==3.16.0
 protobuf==6.31.1
 psutil==7.0.0
+py-cpuinfo==9.0.0
 pydantic==2.11.5
 pydantic_core==2.33.2
 PyMatting==1.1.14
@@ -71,6 +73,7 @@ pyparsing==3.2.3
 pyreadline3==3.5.4
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.0
+pytz==2025.2
 PyYAML==6.0.2
 realesrgan==0.3.0
 referencing==0.36.2
@@ -99,6 +102,9 @@ tqdm==4.67.1
 transformers==4.52.4
 typing-inspection==0.4.1
 typing_extensions==4.12.2
+tzdata==2025.2
+ultralytics==8.3.155
+ultralytics-thop==2.0.14
 urllib3==2.4.0
 waitress==3.0.2
 wcwidth==0.2.13

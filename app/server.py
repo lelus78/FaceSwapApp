@@ -23,9 +23,62 @@ from realesrgan import RealESRGANer
 from flask import Flask, request, send_file, jsonify, render_template, current_app, url_for
 from flask_cors import CORS
 from app.meme_studio import meme_bp
+from ultralytics import YOLO
 from dotenv import load_dotenv
 
-# Prova a importare imageio_ffmpeg e ottieni il percorso dell'eseguibile
+# ==============================================================================
+# --- FUNZIONE HELPER PER LA SEGMENTAZIONE (FUORI DA create_app) ---
+# ==============================================================================
+def get_yolo_human_parsing_mask(image_bytes, parts_to_mask=['hair']):
+    """
+    Usa YOLOv8-Seg per la segmentazione di parti umane e crea una maschera combinata.
+    Restituisce una maschera PIL in bianco e nero.
+    """
+    try:
+        print(f"[YOLO PARSING] Avvio segmentazione per: {parts_to_mask}")
+        image_np = np.frombuffer(image_bytes, np.uint8)
+        image_cv = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
+        height, width, _ = image_cv.shape
+
+        # Esegui la predizione con il modello di human parsing
+        results = yolo_parser(image_cv)
+
+        if not results or results[0].masks is None:
+            print("[YOLO PARSING] Nessuna parte del corpo trovata.")
+            return None
+        
+        final_mask_np = np.zeros((height, width), dtype=np.uint8)
+        class_names = yolo_parser.names
+        print(f"[YOLO PARSING] Classi disponibili: {class_names}")
+
+        target_indices = [k for k, v in class_names.items() if v.lower() in [p.lower() for p in parts_to_mask]]
+
+        if not target_indices:
+            print(f"[YOLO PARSING] Nessuna delle parti richieste ({parts_to_mask}) è tra le classi del modello.")
+            return None
+
+        for i, class_id in enumerate(results[0].boxes.cls):
+            if int(class_id) in target_indices:
+                print(f"[YOLO PARSING] Trovata parte: {class_names[int(class_id)]}")
+                single_mask_np = results[0].masks.data[i].cpu().numpy().astype(np.uint8) * 255
+                single_mask_np = cv2.resize(single_mask_np, (width, height), interpolation=cv2.INTER_NEAREST)
+                final_mask_np = cv2.bitwise_or(final_mask_np, single_mask_np)
+
+        if np.all(final_mask_np == 0):
+             print(f"[YOLO PARSING] Le parti richieste ({parts_to_mask}) non sono state trovate nell'immagine.")
+             return None
+
+        print("[YOLO PARSING] Maschera finale creata con successo.")
+        return Image.fromarray(final_mask_np).convert("L")
+
+    except Exception as e:
+        print(f"[ERRORE GRAVE] Errore durante human parsing con YOLO: {e}")
+        traceback.print_exc()
+        return None
+
+# ==============================================================================
+# --- CONFIGURAZIONE E INIZIALIZZAZIONE GLOBALE DEI MODELLI ---
+# ==============================================================================
 try:
     import imageio_ffmpeg
     ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
@@ -33,8 +86,6 @@ except ImportError:
     print(" [ATTENZIONE] imageio_ffmpeg non è installato. Le funzionalità video non saranno disponibili.")
     ffmpeg_path = None
 
-
-# === CONFIGURAZIONE GLOBALE ===
 CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
 CFG_SAMPLER = "DPM++"
 CFG_SCENE_STEPS = 35
@@ -43,7 +94,6 @@ CFG_UPSCALE_FACTOR = 1.5
 CFG_DETAIL_STEPS = 20
 CFG_OVERLAP = 128
 
-# --- INIZIALIZZAZIONE MODELLI GLOBALI ---
 print(" [+] Inizializzazione modelli AI...");
 face_analyzer = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
 model_path_swapper = os.path.join('models', 'inswapper_128.onnx'); face_swapper = insightface.model_zoo.get_model(model_path_swapper, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
@@ -57,10 +107,15 @@ try:
         print(" [+] Modello Real-ESRGAN x2 per upscaling caricato con successo.")
     else: print(" [ATTENZIONE] Modello RealESRGAN_x2plus.pth non trovato.")
 except Exception as e: print(f" [ERRORE] Impossibile caricare Real-ESRGAN: {e}.")
+
+# Caricamento del modello YOLOv8 per Human Parsing
+yolo_model_path = os.path.join('models', 'yolo-human-parse-v2.pt') # Assicurati che il nome file sia corretto
+yolo_parser = YOLO(yolo_model_path)
+print(" [+] Modello YOLOv8 per Human Parsing caricato.")
+
 pipe = None; canny_detector = None;
 print(" [+] Modelli base pronti. Le pipeline SDXL verranno caricate al primo utilizzo.")
 
-# --- FUNZIONI HELPER ---
 def ensure_pipeline_is_loaded():
     global pipe, canny_detector
     if pipe is not None: return True
@@ -87,7 +142,9 @@ def normalize_image(img, max_dim=1024):
         img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
     return img
 
-# --- APPLICATION FACTORY ---
+# ==============================================================================
+# --- APPLICATION FACTORY (TUTTE LE ROTTE VANNO QUI DENTRO) ---
+# ==============================================================================
 def create_app():
     app = Flask(__name__)
     
@@ -246,6 +303,55 @@ def create_app():
             return send_file(io.BytesIO(buf.tobytes()), mimetype='image/png')
         except Exception as e:
             traceback.print_exc(); return jsonify({"error": f"Errore durante il face swap finale: {e}"}), 500
+            
+    # --- NUOVA ROTTA SPOSTATA QUI (DENTRO create_app) ---
+    @app.route('/generate_with_mask', methods=['POST'])
+    def generate_with_mask():
+        if 'image' not in request.files:
+            return jsonify({"error": "Immagine mancante."}), 400
+        
+        prompt = request.form.get('prompt', 'photorealistic hair')
+        image_file = request.files['image']
+        image_bytes = image_file.read()
+        
+        if not ensure_pipeline_is_loaded(): 
+            return jsonify({"error": "Pipeline AI non caricata."}), 500
+            
+        mask_image = get_yolo_human_parsing_mask(image_bytes, parts_to_mask=['hair']) # Uso 'hair' minuscolo per sicurezza
+        
+        if mask_image is None:
+            return jsonify({"error": "Impossibile generare la maschera con YOLO Human Parsing."}), 500
+            
+        original_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        mask_np = np.array(mask_image)
+        kernel = np.ones((15,15), np.uint8)
+        dilated_mask_np = cv2.dilate(mask_np, kernel, iterations=1)
+        dilated_mask_pil = Image.fromarray(dilated_mask_np)
+
+        print(f"[INPAINTING] Avvio generazione con prompt: {prompt}")
+
+        # Creiamo l'immagine di controllo Canny, necessaria per la pipeline ControlNet
+        control_image = canny_detector(original_image)
+
+        # Eseguiamo l'inpainting passando ANCHE la control_image
+        result_image = pipe(
+            prompt=prompt,
+            image=original_image,
+            mask_image=dilated_mask_pil,
+            control_image=control_image,
+            strength=1.0,
+            controlnet_conditioning_scale=0.7,
+            num_inference_steps=35,
+            guidance_scale=8.0,
+            width=original_image.width,
+            height=original_image.height
+        ).images[0]
+        
+        buf = io.BytesIO()
+        result_image.save(buf, format='PNG')
+        buf.seek(0)
+        print("[INPAINTING] Generazione completata.")
+        return send_file(buf, mimetype='image/png')
 
     @app.route('/enhance_prompt', methods=['POST'])
     def enhance_prompt():
@@ -257,7 +363,7 @@ def create_app():
             base64_image, user_prompt = data.get('image_data'), data.get('prompt_text')
             if not all([base64_image, user_prompt]):
                 return jsonify({"error": "Dati mancanti"}), 400
-            google_api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+            google_api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}" # Nota: era gemini-2.0-flash
             system_prompt = (f"You are an expert prompt engineer for AI image generators. Look at the people in the attached image. Your task is to create a detailed, photorealistic background scene for them based on the user's idea: '{user_prompt}'.\n**Crucially, your generated prompt must describe ONLY the background, the environment, and the lighting. DO NOT mention or describe people, figures, or subjects in your prompt.** Your prompt must create an empty stage for the people in the image to be placed into. **The entire response must be less than 75 tokens long.** Respond ONLY with the new, enhanced prompt. Do not add quotation marks.")
             payload = {"contents": [{"parts": [{"text": system_prompt}, {"inlineData": {"mimeType": "image/jpeg", "data": base64_image}}]}]}
             response = requests.post(google_api_url, headers={'Content-Type': 'application/json'}, json=payload)
@@ -273,8 +379,6 @@ def create_app():
             traceback.print_exc()
             return jsonify({"error": f"Errore durante il miglioramento del prompt: {e}"}), 500
 
-    # === BLOCCO SPOSTATO ALL'INTERNO DI CREATE_APP ===
-    
     # Crea la cartella per i risultati se non esiste
     RESULT_DIR = os.path.join(app.root_path, 'static', 'results')
     os.makedirs(RESULT_DIR, exist_ok=True)
@@ -284,7 +388,7 @@ def create_app():
             raise RuntimeError("ffmpeg non trovato. Assicurati che imageio-ffmpeg sia installato.")
         mp4_path = webm_path.replace('.webm', '.mp4')
         cmd = [
-            ffmpeg_path, '-y',           # sovrascrivi se esiste
+            ffmpeg_path, '-y',
             '-i', webm_path,
             '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
             '-movflags', '+faststart',
@@ -298,15 +402,14 @@ def create_app():
         if not ffmpeg_path:
             return jsonify({'error': 'ffmpeg non è configurato sul server'}), 500
 
-        fmt = request.args.get('fmt', 'mp4')      # "mp4" (default) o "gif"
-        raw = request.get_data()                  # blob WebM dal client
+        fmt = request.args.get('fmt', 'mp4')
+        raw = request.get_data()
         file_id = uuid.uuid4().hex
         webm_path = os.path.join(RESULT_DIR, f'{file_id}.webm')
         with open(webm_path, 'wb') as f:
             f.write(raw)
 
         try:
-            # ---------- conversione ----------
             if fmt == 'mp4':
                 final_path = webm_to_mp4(webm_path)
             elif fmt == 'gif':
@@ -319,20 +422,17 @@ def create_app():
                                 gif_path], check=True)
                 final_path = gif_path
             else:
-                final_path = webm_path  # restituiamo il WebM se il formato non è riconosciuto
+                final_path = webm_path
 
-            # url_for richiede il contesto dell'applicazione per funzionare
             file_url = url_for('static', filename=f'results/{os.path.basename(final_path)}', _external=True)
             return jsonify({'url': file_url})
         except (subprocess.CalledProcessError, RuntimeError) as e:
             traceback.print_exc()
             return jsonify({'error': f"Errore durante la conversione del video: {e}"}), 500
-        
-
+            
     @app.after_request
     def add_pna_header(response):
         response.headers['Access-Control-Allow-Private-Network'] = 'true'
         return response
     
-    # Restituisce l'istanza dell'app configurata
     return app
