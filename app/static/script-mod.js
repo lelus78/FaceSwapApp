@@ -324,6 +324,8 @@ async function handleGenerateAll() {
     } finally {
         finishProgressBar();
         dom.generateAllBtn.disabled = false;
+        // Pulisce i campi di input dopo la generazione
+        dom.dynamicPromptsContainer.querySelectorAll('.prompt-input').forEach(inp => inp.value = '');
     }
 }
 
