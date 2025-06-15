@@ -80,10 +80,14 @@ Create `.env` in the project root:
 GEMINI_API_KEY="YOUR_GOOGLE_GEMINI_KEY"
 ```
 
-### Run Locally
+### Run Locally/Production
 
 ```bash
+# Local development
 python run.py
+
+# Production
+waitress-serve --listen=0.0.0.0:8765 app:wsgi_app
 ```
 
 Browse to [http://127.0.0.1:8765](http://127.0.0.1:8765).
