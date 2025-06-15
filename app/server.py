@@ -138,24 +138,28 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
     target_idx = [idx_map[p] for p in parts_to_mask if p in idx_map]
     if not target_idx: return None
         
+ 
+    final_mask_np = None
+
     if getattr(res, "masks", None) is not None and getattr(res.masks, "data", None) is not None:
-        # If the YOLO model is a segmentation model, combine its masks directly
-        mask_data = res.masks.data
-        if isinstance(mask_data, torch.Tensor):
-            mask_data = mask_data.cpu().numpy()
-        if mask_data.ndim == 4:  # (B, C, H, W)
-            mask_data = mask_data[0]
-        combined = np.zeros(mask_data.shape[1:], dtype=np.uint8)
-        for i, cls_idx in enumerate(res.boxes.cls.tolist()):
-            if int(cls_idx) in target_idx and res.boxes.conf[i].item() > conf_threshold:
-                combined = np.maximum(combined, mask_data[i])
+        # Prefer YOLO segmentation masks when available. Use polygon coordinates
+        # to avoid letterboxing misalignment issues.
+        mask_polys = res.masks.xy  # already scaled to original image size
+        combined = np.zeros((pil_img.height, pil_img.width), dtype=np.uint8)
+        for poly, cls_idx, conf in zip(mask_polys, res.boxes.cls.tolist(), res.boxes.conf.tolist()):
+            conf_val = conf.item() if hasattr(conf, "item") else float(conf)
+            if int(cls_idx) in target_idx and conf_val > conf_threshold:
+                poly_int = np.round(np.array(poly)).astype(np.int32)
+                cv2.fillPoly(combined, [poly_int.reshape(-1, 1, 2)], 255)
         if combined.sum() > 0:
-            final_mask_np = (combined > 0).astype(np.uint8) * 255
-            if final_mask_np.shape != (pil_img.height, pil_img.width):
-                final_mask_np = cv2.resize(final_mask_np, (pil_img.width, pil_img.height), interpolation=cv2.INTER_NEAREST)
-        else:
-            final_mask_np = None
-    else:
+       ip-adapter
+            final_mask_np = combined
+    if final_mask_np is None:
+
+      
+        ip-adapter
+
+        main
         detected_boxes = [b.xyxy[0].cpu().numpy() for b in res.boxes if int(b.cls.item()) in target_idx and b.conf.item() > conf_threshold]
         if not detected_boxes:
             return None
@@ -207,6 +211,7 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
 def create_app():
     app = Flask(__name__)
     load_dotenv()
+    app.config['GEMINI_API_KEY'] = os.getenv('GEMINI_API_KEY')
     CORS(app, resources={r"/*": {"origins": "*"}})
     app.register_blueprint(meme_bp)
 
@@ -331,6 +336,78 @@ def create_app():
             traceback.print_exc(); return jsonify(error=str(e)), 500
         finally:
             pipe, canny_detector = None, None; release_vram()
+
+    @app.route('/enhance_prompt', methods=['POST'])
+    def enhance_prompt():
+        api_key = app.config.get('GEMINI_API_KEY')
+        if not api_key:
+            return jsonify(error="Gemini API key not configured"), 400
+        try:
+            data = request.get_json()
+            base64_image = data.get('image_data')
+            prompt_text = data.get('prompt_text', '')
+            if not base64_image:
+                return jsonify(error="image_data missing"), 400
+            system_prompt = (
+                "Sei un esperto prompt engineer. Migliora il seguente prompt in italiano "
+                "basandoti sull'immagine fornita. Restituisci solo il prompt ottimizzato."
+            )
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": system_prompt + "\nUtente: " + prompt_text},
+                        {"inlineData": {"mimeType": "image/jpeg", "data": base64_image}}
+                    ]
+                }]
+            }
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
+            resp = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+            resp.raise_for_status()
+            result = resp.json()
+            if result.get('candidates'):
+                text = result['candidates'][0]['content']['parts'][0]['text'].strip('"')
+                return jsonify(enhanced_prompt=text)
+            return jsonify(error="No prompt generated"), 500
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify(error=f"Gemini error: {e}"), 500
+
+    @app.route('/enhance_part_prompt', methods=['POST'])
+    def enhance_part_prompt():
+        api_key = app.config.get('GEMINI_API_KEY')
+        if not api_key:
+            return jsonify(error="Gemini API key not configured"), 400
+        try:
+            data = request.get_json()
+            part_name = data.get('part_name', 'subject')
+            prompt_text = data.get('prompt_text', '')
+            base64_image = data.get('image_data')
+            if not base64_image:
+                return jsonify(error="image_data missing"), 400
+            system_prompt = (
+                f"Migliora il prompt per la parte '{part_name}'. "
+                "Rispondi in italiano con un testo adatto a Stable Diffusion. "
+                "Restituisci solo il prompt ottimizzato."
+            )
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": system_prompt + "\nUtente: " + prompt_text},
+                        {"inlineData": {"mimeType": "image/jpeg", "data": base64_image}}
+                    ]
+                }]
+            }
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
+            resp = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+            resp.raise_for_status()
+            result = resp.json()
+            if result.get('candidates'):
+                text = result['candidates'][0]['content']['parts'][0]['text'].strip('"')
+                return jsonify(enhanced_prompt=text)
+            return jsonify(error="No prompt generated"), 500
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify(error=f"Gemini error: {e}"), 500
 
     @app.route('/analyze_parts', methods=['POST'])
     def analyze_parts():
