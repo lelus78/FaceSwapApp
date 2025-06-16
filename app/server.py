@@ -38,6 +38,7 @@ from flask import (
 from werkzeug.utils import safe_join
 from flask_cors import CORS
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
+from app.auth import auth_bp, login_required
 from dotenv import load_dotenv
 
 try:
@@ -297,8 +298,10 @@ def create_app():
     app = Flask(__name__)
     load_dotenv()
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
+    app.secret_key = os.getenv("SECRET_KEY", "dev-key")
     CORS(app, resources={r"/*": {"origins": "*"}})
     app.register_blueprint(meme_bp)
+    app.register_blueprint(auth_bp)
 
     @app.route("/")
     def home():
@@ -309,6 +312,7 @@ def create_app():
         return render_template("esplora.html")
 
     @app.route("/gallery")
+    @login_required
     def gallery_page():
         return render_template("galleria.html")
 
@@ -357,6 +361,7 @@ def create_app():
         return get_approved_memes()
 
     @app.route("/api/meme", methods=["POST"])
+    @login_required
     def api_add_meme():
         if "image" not in request.files:
             return jsonify({"error": "Immagine mancante"}), 400

@@ -207,7 +207,11 @@
             <button id="reset-all-btn" class="btn bg-red-800 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Reset Totale</button>
         </div>
         <div class="flex justify-center mt-4">
+            {% if session.get('user_id') %}
             <button id="add-gallery-btn" class="hidden items-center bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Aggiungi a Galleria</button>
+            {% else %}
+            <p class="text-sm text-gray-400">Accedi per salvare nella galleria</p>
+            {% endif %}
         </div>
     </div>
 </main>
