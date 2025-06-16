@@ -168,9 +168,6 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
         if combined.sum() > 0:
             final_mask_np = combined
     if final_mask_np is None:
-
-      
-        ip-adapter
         detected_boxes = [b.xyxy[0].cpu().numpy() for b in res.boxes if int(b.cls.item()) in target_idx and b.conf.item() > conf_threshold]
         if not detected_boxes:
             return None
