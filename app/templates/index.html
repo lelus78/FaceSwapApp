@@ -1,15 +1,7 @@
-<!DOCTYPE html>
-<html lang="it" class="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Face Swap Studio Pro</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="antialiased bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-300">
+{% extends 'layout.html' %}
+{% block title %}AI Face Swap Studio Pro{% endblock %}
+{% block header_title %}AI Face Swap <span class="text-blue-600">Studio Pro</span>{% endblock %}
+{% block content %}
 
     <div id="error-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-message">
         <div class="flex items-center justify-center min-h-screen px-4">
@@ -247,7 +239,7 @@
                 <div class="flex justify-center items-center gap-2 flex-wrap">
                     <a id="download-btn" href="#" download="pro-meme-result-static.png" class="hidden items-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica PNG</a>
 
-                    <button id="add-gallery-btn" class="hidden items-center bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Aggiungi a Galleria</button>
+                    <button id="add-gallery-btn" class="hidden fixed bottom-4 right-4 z-20 items-center bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Aggiungi a Galleria</button>
                     
                     <button id="download-anim-btn" class="hidden items-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica Animato</button>
                     <select id="anim-fmt" class="hidden bg-gray-700 text-sm text-white rounded-full px-3 py-2 shadow-lg cursor-pointer">
@@ -269,6 +261,8 @@
         </div>
     </div>
     
-    <script type="module" src="{{ url_for('static', filename='js/main.js') }}" defer></script>
-</body>
-</html>
+<div id="toast" class="fixed bottom-20 right-4 bg-gray-800 text-white px-3 py-2 rounded shadow hidden"></div>
+{% endblock %}
+{% block scripts %}
+<script type='module' src='{{ url_for('static', filename='js/main.js') }}' defer></script>
+{% endblock %}
