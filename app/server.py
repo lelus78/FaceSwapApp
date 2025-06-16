@@ -23,6 +23,7 @@ from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from ultralytics import YOLO
 from flask import Flask, request, send_file, jsonify, render_template, current_app, url_for
+from werkzeug.utils import safe_join
 from flask_cors import CORS
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
 from dotenv import load_dotenv
@@ -248,9 +249,18 @@ def create_app():
     @app.route('/lottie_json/<path:sticker_path>')
     def get_lottie_json(sticker_path):
         try:
-            file_path = os.path.join(app.static_folder, sticker_path)
-            if not os.path.exists(file_path): return jsonify({"error": "File non trovato"}), 404
-            with gzip.open(file_path, 'rt', encoding='utf-8') as f:
+            safe_path = safe_join(app.static_folder, sticker_path)
+        except Exception:
+            return jsonify({"error": "Percorso non valido"}), 404
+
+        if not safe_path or not os.path.isfile(safe_path):
+            return jsonify({"error": "File non trovato"}), 404
+
+        if not os.path.abspath(safe_path).startswith(os.path.abspath(app.static_folder)):
+            return jsonify({"error": "Percorso non valido"}), 404
+
+        try:
+            with gzip.open(safe_path, 'rt', encoding='utf-8') as f:
                 return jsonify(json.load(f))
         except Exception as e:
             return jsonify({"error": str(e)}), 500
