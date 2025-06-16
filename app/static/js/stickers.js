@@ -64,8 +64,9 @@ export async function loadStickers() {
       category.stickers.forEach(path => {
         const isVideo = path.endsWith('.webm');
         const isLottie = path.endsWith('.tgs');
-        const wrapper = document.createElement('div');
-        wrapper.className = 'sticker-item-wrapper relative';
+        const wrapper = document.createElement('button');
+        wrapper.type = 'button';
+        wrapper.className = 'sticker-item-wrapper relative focus:outline-none';
         let el;
         if (isLottie) {
           el = document.createElement('div');
@@ -78,7 +79,11 @@ export async function loadStickers() {
         }
         el.className = 'h-20 w-auto object-contain p-1 bg-gray-700 rounded-md cursor-pointer hover:bg-blue-600 transition-all sticker-item';
         wrapper.appendChild(el);
-        wrapper.addEventListener('click', () => addStickerToCanvas(el, isVideo, isLottie, path));
+        const handler = () => addStickerToCanvas(el, isVideo, isLottie, path);
+        wrapper.addEventListener('click', handler);
+        wrapper.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+        });
         container.appendChild(wrapper);
       });
     });

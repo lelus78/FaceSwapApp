@@ -73,10 +73,16 @@ export function finishProgressBar() {
   }, 200);
 }
 
+export function closeModal(id) {
+  const modal = document.getElementById(id);
+  if (modal) modal.style.display = 'none';
+}
+
 export function showError(title, message) {
   dom.errorModal.style.display = 'flex';
   document.getElementById('error-title').textContent = title;
   document.getElementById('error-message').textContent = message;
+  dom.errorModal.querySelector('button')?.focus();
 }
 
 export function goToStep(stepNumber) {
@@ -308,6 +314,12 @@ export async function handleGenerateCaption() {
 }
 
 export function setupEventListeners() {
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      closeModal('error-modal');
+      closeModal('progress-modal');
+    }
+  });
   dom.resetAllBtn.addEventListener('click', resetWorkflow);
   dom.subjectImgInput.addEventListener('change', e => handleSubjectFile(e.target.files[0]));
   dom.prepareSubjectBtn.addEventListener('click', handlePrepareSubject);
