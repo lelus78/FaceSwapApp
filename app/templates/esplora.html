@@ -1,0 +1,36 @@
+{% extends 'layout.html' %}
+{% block title %}Esplora{% endblock %}
+{% block header_title %}Esplora{% endblock %}
+{% block content %}
+<div class="p-4">
+  <input type="search" id="explore-search" placeholder="Cerca" class="w-full mb-4 p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Cerca immagini">
+  <div id="explore-grid" class="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"></div>
+  <div id="sentinel" class="h-10"></div>
+</div>
+<div id="gallery-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-modal-img">
+  <div class="flex items-center justify-center min-h-screen px-4">
+    <div class="modal-content bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-2xl max-w-3xl mx-auto">
+      <img id="gallery-modal-img" src="" alt="Anteprima" class="max-h-[80vh] mx-auto rounded-lg" />
+      <div class="mt-4 flex justify-end gap-2">
+        <a id="gallery-download" href="#" download="meme.png" class="btn btn-primary">Download</a>
+        <button type="button" onclick="closeModal('gallery-modal')" class="btn bg-gray-700">Chiudi</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+  import { loadExplore } from '{{ url_for('static', filename='js/gallery.js') }}';
+  import { closeModal } from '{{ url_for('static', filename='js/workflow.js') }}';
+  const grid = document.getElementById('explore-grid');
+  const searchInput = document.getElementById('explore-search');
+  let filter = '';
+  const { fetchMore, applyFilter } = await loadExplore(grid);
+  const obs = new IntersectionObserver(entries=>{ if(entries[0].isIntersecting) fetchMore(); });
+  obs.observe(document.getElementById('sentinel'));
+  searchInput.addEventListener('input', e=>{ filter = e.target.value.toLowerCase(); applyFilter(filter); });
+  window.addEventListener('gallery-updated', ()=>{ applyFilter(filter, true); });
+  window.closeModal = closeModal;
+</script>
+{% endblock %}
