@@ -54,10 +54,13 @@
                 <div class="flex items-center gap-2 mb-2">
                     <input type="text" id="bg-prompt-input" placeholder="Es: foresta incantata al tramonto..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-gray-300">
                 </div>
-                <label class="toggle-label flex items-center justify-between mb-4 cursor-pointer">
-                    <span class="text-gray-300">Miglioramento Automatico Prompt ✨</span>
-                    <div class="relative"><input type="checkbox" id="auto-enhance-prompt-toggle" class="toggle-checkbox sr-only" aria-label="Migliora automaticamente il prompt"><div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div></div>
-                </label>
+                <div class="flex items-center justify-between mb-4">
+                    <label for="auto-enhance-prompt-toggle" class="text-gray-300 cursor-pointer">Miglioramento Automatico Prompt ✨</label>
+                    <div class="relative">
+                        <input type="checkbox" id="auto-enhance-prompt-toggle" class="toggle-checkbox sr-only" aria-label="Migliora automaticamente il prompt">
+                        <label for="auto-enhance-prompt-toggle" class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></label>
+                    </div>
+                </div>
                 <button id="generate-scene-btn" class="btn btn-primary w-full mt-2 text-white font-bold py-2 px-4 rounded-lg">🎨 Genera Sfondo e Componi Scena</button>
             </div>
             <button id="goto-step-3-btn" class="btn btn-secondary w-full mt-4 text-white font-bold py-3 px-4 rounded-lg disabled:opacity-50" disabled>Vai allo Step 3: Upscale</button>
@@ -65,13 +68,13 @@
         <div id="step-3-upscale" class="wizard-step hidden bg-gray-800 p-6 rounded-xl shadow-lg">
             <h2 class="text-2xl font-bold text-blue-400 mb-4 border-b border-gray-700 pb-2">Step 3: Upscale e Dettaglio</h2>
             <p class="text-gray-400 mb-4">La tua scena è pronta. Ora puoi migliorarne la risoluzione e aggiungere dettagli.</p>
-            <label class="toggle-label flex items-center justify-between mb-4 p-3 bg-gray-900 rounded-lg cursor-pointer">
-                <span class="text-gray-300 font-medium">Attiva Hi-Res Upscale (Lento)</span>
+            <div class="flex items-center justify-between mb-4 p-3 bg-gray-900 rounded-lg">
+                <label for="enable-hires-upscale-toggle" class="text-gray-300 font-medium cursor-pointer">Attiva Hi-Res Upscale (Lento)</label>
                 <div class="relative">
                     <input type="checkbox" id="enable-hires-upscale-toggle" class="toggle-checkbox sr-only" checked aria-label="Abilita upscaling">
-                    <div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div>
+                    <label for="enable-hires-upscale-toggle" class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></label>
                 </div>
-            </label>
+            </div>
             <div class="mb-4">
                 <label for="tile-denoising-slider" class="block text-sm font-medium text-gray-400 mb-2">Forza Detailing (Denoising): <span id="tile-denoising-value">0.40</span></label>
                 <input type="range" id="tile-denoising-slider" min="0.0" max="1.0" step="0.05" value="0.4" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer range-lg">
@@ -83,10 +86,13 @@
             <h2 class="text-2xl font-bold text-blue-400 mb-4 border-b border-gray-700 pb-2">Step 4: Tocco Finale</h2>
             <div class="mb-6">
                 <h3 class="text-xl font-semibold text-gray-300 mb-3">A. Face Swap Mirato</h3>
-                <label class="toggle-label flex items-center justify-between mb-2 text-sm cursor-pointer">
-                    <span class="text-gray-400">Mostra riquadri selezione volto</span>
-                    <div class="relative"><input type="checkbox" id="toggle-face-boxes" class="toggle-checkbox sr-only" checked aria-label="Mostra riquadri volti"><div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div></div>
-                </label>
+                <div class="flex items-center justify-between mb-2 text-sm">
+                    <label for="toggle-face-boxes" class="text-gray-400 cursor-pointer">Mostra riquadri selezione volto</label>
+                    <div class="relative">
+                        <input type="checkbox" id="toggle-face-boxes" class="toggle-checkbox sr-only" checked aria-label="Mostra riquadri volti">
+                        <label for="toggle-face-boxes" class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></label>
+                    </div>
+                </div>
                 <div class="relative upload-box flex flex-col items-center justify-center p-4 rounded-lg min-h-[220px]">
                     <img id="source-img-preview" src="" alt="Anteprima Sorgente" class="hidden rounded-lg" style="max-height: 200px; z-index: 1;"/>
                     <div id="source-face-boxes-container" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></div>
@@ -115,7 +121,8 @@
             <div id="sticker-section" class="mb-6 border-t border-gray-700 pt-4">
                 <h3 class="text-xl font-semibold text-gray-300 mb-3">C. Elementi Grafici</h3>
                 <div class="mb-2">
-                    <input type="search" id="sticker-search-input" placeholder="Cerca sticker..." class="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-sm text-gray-300">
+                    <label for="sticker-search-input" class="sr-only">Cerca sticker</label>
+                    <input type="search" id="sticker-search-input" placeholder="Cerca sticker..." aria-label="Cerca sticker" class="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-sm text-gray-300">
                 </div>
                 <div id="sticker-gallery" class="p-2 bg-gray-900 rounded-lg h-40 overflow-y-auto"></div>
                 <div id="sticker-controls" class="flex justify-center gap-2 mt-2">
@@ -173,7 +180,8 @@
                     <button class="tone-btn" data-tone="assurdo">Assurdo</button>
                 </div>
                 <div class="flex items-center gap-2">
-                    <input type="text" id="caption-text-input" placeholder="Scrivi o genera una didascalia..." class="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-gray-300">
+                    <label for="caption-text-input" class="sr-only">Testo meme</label>
+                    <input type="text" id="caption-text-input" placeholder="Scrivi o genera una didascalia..." aria-label="Testo meme" class="w-full bg-gray-900 border border-gray-600 rounded-lg p-2 text-gray-300">
                     <button id="caption-btn" class="btn btn-secondary text-white font-bold py-2 px-4 rounded-lg" title="Suggerisci Didascalia con AI">✨</button>
                 </div>
             </div>

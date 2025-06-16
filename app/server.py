@@ -347,15 +347,38 @@ def create_app():
         gallery_dir = os.path.join(app.static_folder, "gallery")
         if not os.path.isdir(gallery_dir):
             return jsonify([])
+
+        def collect_items(path):
+            meta = {}
+            meta_path = os.path.join(path, "meta.json")
+            if os.path.isfile(meta_path):
+                try:
+                    with open(meta_path, "r", encoding="utf-8") as f:
+                        meta = json.load(f) or {}
+                except Exception:
+                    meta = {}
+            for fname in sorted(os.listdir(path)):
+                if not fname.lower().endswith((".png", "jpg", "jpeg", "webp", "gif")):
+                    continue
+                info = meta.get(fname, {})
+                if not info.get("shared"):
+                    continue
+                rel = os.path.relpath(os.path.join(path, fname), app.static_folder)
+                yield {
+                    "title": info.get("title", os.path.splitext(fname)[0]),
+                    "url": url_for("static", filename=rel.replace(os.sep, "/")),
+                    "caption": info.get("caption", ""),
+                    "tags": info.get("tags", []),
+                    "ts": info.get("ts"),
+                    "shared": True,
+                }
+
         items = []
-        for fname in sorted(os.listdir(gallery_dir)):
-            if fname.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
-                items.append(
-                    {
-                        "title": os.path.splitext(fname)[0],
-                        "url": url_for("static", filename=f"gallery/{fname}"),
-                    }
-                )
+
+        for root, dirs, files in os.walk(gallery_dir):
+            items.extend(list(collect_items(root)))
+
+        items.sort(key=lambda x: x.get("ts") or 0, reverse=True)
         return jsonify(items)
 
     @app.route("/api/memes")
