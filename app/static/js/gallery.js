@@ -1,3 +1,4 @@
+
 const GALLERY_KEY = 'galleryData';
 const USERNAME = localStorage.getItem('username') || 'user';
 
@@ -220,6 +221,7 @@ async function embedCaption(imgUrl, text) {
         img.src = imgUrl;
     });
 }
+
 
 export async function loadExplore(container) {
     // Logica di 'ip-adapter' per caricare solo gli elementi condivisi

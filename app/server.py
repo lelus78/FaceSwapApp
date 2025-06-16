@@ -368,6 +368,7 @@ def create_app():
                 }
 
         items = []
+
         for root, dirs, files in os.walk(gallery_dir):
             items.extend(list(collect_items(root)))
 

@@ -2,8 +2,15 @@
 {% block title %}Galleria{% endblock %}
 {% block header_title %}Galleria{% endblock %}
 {% block content %}
-<div class="p-4">
-  <input type="search" id="gallery-search" placeholder="Cerca" class="w-full mb-4 p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Cerca nella galleria">
+<div class="p-4 space-y-4">
+  <div class="flex flex-wrap gap-2 items-center">
+    <input type="search" id="gallery-search" placeholder="Cerca" class="flex-1 min-w-[120px] p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Cerca nella galleria">
+    <input type="text" id="gallery-tags" placeholder="Tag" class="flex-1 min-w-[120px] p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Filtra per tag">
+    <input type="date" id="gallery-from" class="p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Data inizio">
+    <input type="date" id="gallery-to" class="p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Data fine">
+    <label class="flex items-center gap-1 text-sm"><input type="checkbox" id="gallery-local" class="form-checkbox" checked> Local</label>
+    <label class="flex items-center gap-1 text-sm"><input type="checkbox" id="gallery-shared" class="form-checkbox" checked> Shared</label>
+  </div>
   <div id="user-gallery" class="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"></div>
 </div>
 <div id="gallery-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-modal-img">
@@ -24,16 +31,28 @@
   import { loadGallery, setupGalleryInteraction } from '{{ url_for('static', filename='js/gallery.js') }}';
   import { closeModal } from '{{ url_for('static', filename='js/workflow.js') }}';
   const container = document.getElementById('user-gallery');
+  const tagInput = document.getElementById('gallery-tags');
+  const fromInput = document.getElementById('gallery-from');
+  const toInput = document.getElementById('gallery-to');
+  const localChk = document.getElementById('gallery-local');
+  const sharedChk = document.getElementById('gallery-shared');
   const searchInput = document.getElementById('gallery-search');
-  function render(){ loadGallery(container).then(()=>setupGalleryInteraction(container)); }
+
+  const filters = { search:'', tags:[], start:null, end:null, local:true, shared:true };
+  function render(){ loadGallery(container, filters).then(()=>setupGalleryInteraction(container)); }
+  function update(){
+    filters.search = searchInput.value.toLowerCase();
+    filters.tags = tagInput.value.split(',').map(t=>t.trim()).filter(Boolean);
+    filters.start = fromInput.value ? new Date(fromInput.value).getTime() : null;
+    filters.end = toInput.value ? new Date(toInput.value).getTime()+86399999 : null;
+    filters.local = localChk.checked;
+    filters.shared = sharedChk.checked;
+    render();
+  }
   render();
   window.addEventListener('gallery-updated', render);
-  searchInput.addEventListener('input', e=>{
-    const t = e.target.value.toLowerCase();
-    container.querySelectorAll('.gallery-item').forEach(card=>{
-      const txt = card.querySelector('p')?.textContent.toLowerCase() || '';
-      card.style.display = txt.includes(t) ? '' : 'none';
-    });
+  [searchInput, tagInput, fromInput, toInput, localChk, sharedChk].forEach(el=>{
+    el.addEventListener('input', update);
   });
   window.closeModal = closeModal;
 </script>
