@@ -18,8 +18,7 @@ from gfpgan import GFPGANer
 from rembg import remove
 from diffusers import StableDiffusionXLControlNetInpaintPipeline, ControlNetModel, DPMSolverMultistepScheduler
 from controlnet_aux import CannyDetector
-from PIL import Image, ImageDraw
-import PIL.ImageOps as ImageOps
+from PIL import Image, ImageDraw, ImageOps
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from ultralytics import YOLO
@@ -82,10 +81,24 @@ def ensure_pipeline_is_loaded():
         print(f" [VRAM] Caricamento pipeline SDXL '{CFG_MODEL_NAME}'...")
         model_path = os.path.join('models', 'checkpoints', CFG_MODEL_NAME)
         if not os.path.isdir(model_path): return False
+        # Il ControlNet "canny" guida la coerenza dei bordi
         canny_detector = CannyDetector()
-        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16)
-        pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(model_path, controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True)
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        controlnet = ControlNetModel.from_pretrained(
+            "diffusers/controlnet-canny-sdxl-1.0",
+            torch_dtype=torch.float16,
+        )
+        # Pipeline SDXL ottimizzata per l'inpaint con ControlNet
+        pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
+            model_path,
+            controlnet=controlnet,
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+        )
+        # Scheduler più stabile e veloce rispetto al default
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            pipe.scheduler.config
+        )
+        # Scarica dalla GPU ciò che non serve per liberare memoria
         pipe.enable_model_cpu_offload()
     return True
     
