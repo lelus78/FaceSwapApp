@@ -42,7 +42,6 @@ export function assignDomElements() {
     'meme-section', 'caption-text-input', 'caption-btn', 'tone-buttons-container',
     'font-family-select', 'font-size-slider', 'font-size-value',
     'font-color-input', 'stroke-color-input', 'position-buttons', 'text-bg-buttons',
-    'inpainting-prompt-input', 'generate-hair-btn',
     'analyze-parts-btn',
     'dynamic-prompts-container',
     'generate-all-btn',
