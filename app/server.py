@@ -313,7 +313,7 @@ def create_app():
         return render_template("esplora.html", form=form)
 
     @app.route("/gallery")
-    @login_required
+    #   @login_required   # Uncomment if login is required
     def gallery_page():
         form = SearchForm()
         return render_template("galleria.html", form=form)
@@ -392,7 +392,7 @@ def create_app():
         return get_approved_memes()
 
     @app.route("/api/meme", methods=["POST"])
-    @login_required
+    # @login_required # Uncomment if login is required
     def api_add_meme():
         if "image" not in request.files:
             return jsonify({"error": "Immagine mancante"}), 400
