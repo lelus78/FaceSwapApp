@@ -2,6 +2,43 @@ import * as api from './api.js';
 import { state, dom } from './state.js';
 import { drawFaceBoxes, updateSelectionHighlights } from './facebox.js';
 
+export function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'block';
+}
+
+export function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+}
+
+export function showError(title, message) {
+    if (!dom.errorModal) return;
+    dom.errorModal.querySelector('#error-title').textContent = title;
+    dom.errorModal.querySelector('#error-message').textContent = message;
+    openModal('error-modal');
+}
+
+export function startProgressBar(text) {
+    if (!dom.progressModal) return;
+    dom.progressTitle.textContent = text;
+    dom.progressBar.style.width = '0%';
+    dom.progressText.textContent = '0%';
+    openModal('progress-modal');
+}
+
+export function finishProgressBar() {
+    closeModal('progress-modal');
+}
+
+function showStep(step) {
+    const steps = [dom.step1Subject, dom.step2Scene, dom.step3Upscale, dom.step4Finalize];
+    steps.forEach((el, idx) => {
+        if (el) el.classList.toggle('hidden', idx + 1 !== step);
+    });
+    state.currentStep = step;
+}
+
 /**
  * Visualizza un'immagine (da File o Blob) in un elemento <img>.
  * Esegue un callback solo dopo che l'immagine è stata completamente caricata nel browser.
@@ -111,6 +148,41 @@ function handleSourceFile(file) {
     });
 }
 
+async function handlePrepareSubject() {
+    if (!state.subjectFile) return;
+    try {
+        startProgressBar('Rimozione sfondo...');
+        const blob = await api.prepareSubject(state.subjectFile);
+        state.processedSubjectBlob = blob;
+        displayImage(blob, dom.resultImageDisplay, () => {
+            detectFacesAndDraw(blob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+        });
+        showStep(2);
+    } catch (err) {
+        showError('Errore', err.message);
+    } finally {
+        finishProgressBar();
+    }
+}
+
+function skipToSwap() {
+    if (!state.subjectFile) return;
+    displayImage(state.subjectFile, dom.resultImageDisplay, () => {
+        detectFacesAndDraw(state.subjectFile, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    });
+    state.upscaledImageBlob = state.subjectFile;
+    showStep(4);
+}
+
+function skipUpscale() {
+    if (!state.sceneImageBlob) return;
+    displayImage(state.sceneImageBlob, dom.resultImageDisplay, () => {
+        detectFacesAndDraw(state.sceneImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    });
+    state.upscaledImageBlob = state.sceneImageBlob;
+    showStep(4);
+}
+
 
 /**
  * Imposta tutti gli event listener principali dell'applicazione.
@@ -121,11 +193,11 @@ export function setupEventListeners() {
 
     // Listener per il caricamento dell'immagine sorgente nello step 4
     dom.sourceImgInput.addEventListener('change', (e) => handleSourceFile(e.target.files[0]));
-    
-    // Aggiungi qui gli altri listener per i pulsanti del workflow
-    // Esempio: dom.prepareSubjectBtn.addEventListener('click', handlePrepareSubject);
-    // Esempio: dom.swapBtn.addEventListener('click', handlePerformSwap);
-    // Esempio: dom.resetAllBtn.addEventListener('click', resetWorkflow);
+
+    dom.prepareSubjectBtn.addEventListener('click', handlePrepareSubject);
+    dom.skipToSwapBtn.addEventListener('click', skipToSwap);
+    dom.skipUpscaleBtn.addEventListener('click', skipUpscale);
+    dom.backToStep3Btn.addEventListener('click', () => showStep(3));
 
     // Listener per il toggle che mostra/nasconde i box
     dom.toggleFaceBoxes.addEventListener('change', (e) => {
@@ -149,4 +221,8 @@ export function resetWorkflow() {
     if (dom.swapBtn) dom.swapBtn.disabled = true;
     if (dom.selectedSourceId) dom.selectedSourceId.textContent = 'Nessuno';
     if (dom.selectedTargetId) dom.selectedTargetId.textContent = 'Nessuno';
+    if (dom.imagePreview) dom.imagePreview.classList.add('hidden');
+    if (dom.sourceImgPreview) dom.sourceImgPreview.classList.add('hidden');
+    if (dom.resultImageDisplay) dom.resultImageDisplay.classList.add('hidden');
+    showStep(1);
 }

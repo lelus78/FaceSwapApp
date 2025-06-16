@@ -1,5 +1,5 @@
 import { assignDomElements, dom } from './state.js';
-import { setupEventListeners, resetWorkflow } from './workflow.js';
+import { setupEventListeners, resetWorkflow, closeModal, openModal } from './workflow.js';
 import { initFaceBoxObservers } from './facebox.js';
 import { initTheme } from './theme.js';
 
@@ -20,7 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 4. Inizializza gli observer che gestiscono il ridisegno dei box al resize
   initFaceBoxObservers();
-  
+
   // 5. Esegue un reset iniziale per portare l'app allo stato di partenza
   resetWorkflow();
+
+  window.closeModal = closeModal;
+  window.openModal = openModal;
 });
