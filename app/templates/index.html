@@ -2,7 +2,6 @@
 {% block title %}AI Face Swap Studio Pro{% endblock %}
 {% block header_title %}AI Face Swap <span class="text-blue-600">Studio Pro</span>{% endblock %}
 {% block content %}
-
     <div id="error-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-message">
         <div class="flex items-center justify-center min-h-screen px-4">
             <div class="modal-content bg-red-900 border border-red-700 text-white rounded-lg p-6 shadow-2xl max-w-sm mx-auto">
@@ -12,7 +11,6 @@
             </div>
         </div>
     </div>
-
     <div id="progress-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="progress-title">
         <div class="flex items-center justify-center min-h-screen px-4">
             <div class="modal-content bg-gray-900 border border-gray-700 text-white rounded-lg p-8 shadow-2xl max-w-sm mx-auto w-full">
@@ -25,7 +23,6 @@
             </div>
         </div>
     </div>
-
     <div id="gallery-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-modal-img">
         <div class="flex items-center justify-center min-h-screen px-4">
             <div class="modal-content bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-2xl max-w-3xl mx-auto">
@@ -34,15 +31,8 @@
             </div>
         </div>
     </div>
-
-    <div class="w-full max-w-7xl mx-auto p-4 flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8">
-            
-            <div id="controls-column" class="flex flex-col gap-6">
-
-                <div id="step-1-subject" class="wizard-step bg-gray-800 p-6 rounded-xl shadow-lg">
-                    <h2 class="text-2xl font-bold text-blue-400 mb-4 border-b border-gray-700 pb-2">Step 1: Carica Immagine</h2>
-                        <label for="subject-img-input" class="upload-box flex flex-col items-center justify-center p-4 rounded-lg min-h-[250px]">
-                        <img id="subject-img-preview" src="" alt="Anteprima Soggetto" class="hidden rounded-lg"/>
+    <main class="w-full max-w-7xl mx-auto p-4 flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div id="controls-column" class="flex flex-col gap-6">
                         <div id="subject-upload-prompt" class="text-center">
                             <svg class="w-12 h-12 mx-auto text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                             <p class="mt-2 text-sm font-medium text-gray-400">Clicca o trascina l'immagine di partenza</p>
@@ -194,10 +184,11 @@
                         <h3 class="text-xl font-semibold text-gray-300 mb-3">E. Generazione Multi-Parte</h3>
                         
                         <button id="analyze-parts-btn" class="btn btn-primary w-full text-white font-bold py-2 px-4 rounded-lg">1. Analizza Parti Corpo</button>
-                        
+                        <button id="analyze-parts-btn" class="btn btn-primary w-full text-white font-bold py-2 px-4 rounded-lg">1. Analizza Parti Corpo</button>
+
                         <div id="dynamic-prompts-container" class="my-4 space-y-3">
                             </div>
-                        
+
                         <button id="generate-all-btn" class="btn btn-secondary w-full text-white font-bold py-2 px-4 rounded-lg hidden" disabled>2. Genera Modifiche</button>
                     </div>
                     </div>
@@ -211,18 +202,18 @@
                     <div id="target-face-boxes-container" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></div>
                     <p id="result-placeholder" class="text-gray-500">Il risultato del processo apparirà qui...</p>
                 </div>
-                
+
                 <div class="flex justify-center items-center gap-2 flex-wrap">
                     <a id="download-btn" href="#" download="pro-meme-result-static.png" class="hidden items-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica PNG</a>
 
                     <button id="add-gallery-btn" class="hidden fixed bottom-4 right-4 z-20 items-center bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Aggiungi a Galleria</button>
-                    
+
                     <button id="download-anim-btn" class="hidden items-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica Animato</button>
                     <select id="anim-fmt" class="hidden bg-gray-700 text-sm text-white rounded-full px-3 py-2 shadow-lg cursor-pointer">
                         <option value="mp4">MP4</option>
                         <option value="gif">GIF</option>
                     </select>
-                    
+
                     <button id="share-btn" class="hidden items-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
                             <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
@@ -233,10 +224,9 @@
                     <button id="reset-all-btn" class="btn bg-red-800 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Reset Totale</button>
                 </div>
             </div>
-        </div>
-    
-<div id="toast" class="fixed bottom-20 right-4 bg-gray-800 text-white px-3 py-2 rounded shadow hidden"></div>
+        </main>
+    <div id="toast" class="fixed bottom-20 right-4 bg-gray-800 text-white px-3 py-2 rounded shadow hidden"></div>
 {% endblock %}
 {% block scripts %}
-<script type='module' src='{{ url_for('static', filename='js/main.js') }}' defer></script>
+<script type='module' src="{{ url_for('static', filename='js/main.js') }}" defer></script>
 {% endblock %}

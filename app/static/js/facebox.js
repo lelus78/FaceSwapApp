@@ -66,8 +66,10 @@ function handleFaceSelection(index, type) {
   dom.swapBtn.disabled = state.selectedSourceIndex < 0 || state.selectedTargetIndex < 0;
 }
 
-if (window.ResizeObserver) {
-  const ro = new ResizeObserver(refreshFaceBoxes);
-  [dom.resultImageDisplay, dom.sourceImgPreview].forEach(el=>el && ro.observe(el));
+export function initFaceBoxObservers() {
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(refreshFaceBoxes);
+    [dom.resultImageDisplay, dom.sourceImgPreview].forEach(el => el && ro.observe(el));
+  }
+  window.addEventListener('resize', refreshFaceBoxes);
 }
-window.addEventListener('resize', refreshFaceBoxes);

@@ -39,13 +39,15 @@
 import { initTheme } from '{{ url_for('static', filename='js/theme.js') }}';
 import { initSidebarToggle, loadGallery, setupGalleryInteraction } from '{{ url_for('static', filename='js/gallery.js') }}';
 
-const sidebar = document.getElementById('sidebar');
-const sidebarToggle = document.getElementById('sidebar-toggle');
-const galleryToggle = document.getElementById('gallery-toggle');
-const galleryContainer = document.getElementById('gallery-container');
-initTheme('theme-toggle','theme-icon');
-initSidebarToggle(sidebar, sidebarToggle, galleryToggle, galleryContainer);
-if (galleryContainer) loadGallery(galleryContainer).then(()=>setupGalleryInteraction(galleryContainer));
+document.addEventListener('DOMContentLoaded', () => {
+  const sidebar = document.getElementById('sidebar');
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const galleryToggle = document.getElementById('gallery-toggle');
+  const galleryContainer = document.getElementById('gallery-container');
+  initTheme('theme-toggle','theme-icon');
+  initSidebarToggle(sidebar, sidebarToggle, galleryToggle, galleryContainer);
+  if (galleryContainer) loadGallery(galleryContainer).then(()=>setupGalleryInteraction(galleryContainer));
+});
 </script>
 {% block scripts %}{% endblock %}
 </body>
