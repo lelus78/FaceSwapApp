@@ -1,6 +1,7 @@
 import { state, dom } from './state.js';
 import * as api from './api.js';
 import { showError, startProgressBar, finishProgressBar } from './workflow.js';
+import { refreshFaceBoxes } from './facebox.js';
 
 export function updateMemePreview() {
   const imageToDrawOn = dom.resultImageDisplay;
@@ -18,6 +19,7 @@ export function updateMemePreview() {
   dom.memeCanvas.classList.toggle('hidden', !shouldShowCanvas);
   if (text) drawMemeText(ctx);
   state.stickerStack.forEach(sticker => drawSticker(ctx, sticker));
+  if (!dom.resultImageDisplay.classList.contains('hidden')) refreshFaceBoxes();
 }
 
 function drawMemeText(ctx) {

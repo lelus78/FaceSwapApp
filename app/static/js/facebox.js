@@ -5,7 +5,7 @@ import { showError } from './workflow.js';
 export function drawFaceBoxes(container, image, faces, type) {
   if (!container || !image || !image.complete || image.naturalWidth === 0) return;
   container.innerHTML = '';
-  const rect = image.getBoundingClientRect();
+  const rect = container.getBoundingClientRect();
   if (!rect.width) return;
   const scaleX = rect.width / image.naturalWidth;
   const scaleY = rect.height / image.naturalHeight;

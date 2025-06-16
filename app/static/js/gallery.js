@@ -26,6 +26,9 @@ function renderGallery(container, items) {
     const title = document.createElement('p');
     title.className = 'text-xs text-white truncate';
     title.textContent = m.title || '';
+    const time = document.createElement('p');
+    time.className = 'text-[10px] text-gray-300';
+    time.textContent = m.ts ? new Date(m.ts).toLocaleString() : '';
     const actions = document.createElement('div');
     actions.className = 'flex justify-end gap-1';
     actions.innerHTML = `
@@ -39,6 +42,7 @@ function renderGallery(container, items) {
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
       </button>`;
     overlay.appendChild(title);
+    overlay.appendChild(time);
     overlay.appendChild(actions);
     card.appendChild(img);
     card.appendChild(overlay);
@@ -135,7 +139,8 @@ export async function loadExplore(container) {
       const overlay=document.createElement('div');
       overlay.className='gallery-item-overlay';
       const p=document.createElement('p'); p.className='text-xs text-white truncate'; p.textContent=m.title||'';
-      overlay.appendChild(p); card.appendChild(img); card.appendChild(overlay); container.appendChild(card);
+      const time=document.createElement('p'); time.className='text-[10px] text-gray-300'; time.textContent=m.ts?new Date(m.ts).toLocaleString():'';
+      overlay.appendChild(p); overlay.appendChild(time); card.appendChild(img); card.appendChild(overlay); container.appendChild(card);
     });
   }
   function fetchMore(){ if(index<filtered.length) renderSlice(); }
@@ -162,8 +167,6 @@ export async function addToGallery(title, dataUrl, caption='') {
   const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
   list.push({ title, url: withText, caption, local: true, ts: Date.now() });
   localStorage.setItem('userGallery', JSON.stringify(list));
-  const container = document.getElementById('gallery-container');
-  if (container) renderGallery(container, list);
   window.dispatchEvent(new Event('gallery-updated'));
   showToast('Salvato nella galleria');
 }

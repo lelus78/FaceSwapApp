@@ -47,7 +47,7 @@ export function assignDomElements() {
     'dynamic-prompts-container',
     'generate-all-btn',
     'theme-toggle', 'theme-icon',
-    'sidebar', 'sidebar-toggle', 'gallery-toggle', 'gallery-container',
+    'sidebar', 'sidebar-toggle',
     'gallery-modal', 'gallery-modal-img'
   ];
   ids.forEach(id => {
