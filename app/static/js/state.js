@@ -46,7 +46,8 @@ export function assignDomElements() {
     'analyze-parts-btn',
     'dynamic-prompts-container',
     'generate-all-btn',
-    'theme-toggle', 'theme-icon'
+    'theme-toggle', 'theme-icon',
+    'sidebar', 'sidebar-toggle', 'gallery-toggle', 'gallery-container'
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
