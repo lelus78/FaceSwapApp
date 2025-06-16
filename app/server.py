@@ -558,6 +558,35 @@ def create_app():
         finally:
             face_analyzer, face_swapper, face_restorer = (None,) * 3; release_vram()
 
+    @app.route('/save_result_video', methods=['POST'])
+    def save_result_video():
+        if not ffmpeg_path:
+            return jsonify(error="ffmpeg not available"), 500
+        fmt = request.args.get('fmt', 'mp4').lower()
+        data = request.get_data()
+        if not data:
+            return jsonify(error="Missing video data"), 400
+        try:
+            temp_dir = os.path.join(app.static_folder, 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
+            input_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}.webm")
+            with open(input_path, 'wb') as f:
+                f.write(data)
+            ext = 'gif' if fmt == 'gif' else 'mp4'
+            out_name = f"{uuid.uuid4().hex}.{ext}"
+            output_path = os.path.join(temp_dir, out_name)
+            cmd = [ffmpeg_path, '-y', '-i', input_path]
+            if ext == 'mp4':
+                cmd += ['-c:v', 'libx264', '-pix_fmt', 'yuv420p']
+            cmd.append(output_path)
+            subprocess.run(cmd, check=True)
+            os.remove(input_path)
+            rel = os.path.relpath(output_path, app.static_folder).replace(os.sep, '/')
+            return jsonify(url=url_for('static', filename=rel))
+        except Exception as e:
+            logging.exception("Errore conversione video")
+            return jsonify(error=str(e)), 500
+
     @app.after_request
     def add_pna_header(response):
         response.headers['Access-Control-Allow-Private-Network'] = 'true'
