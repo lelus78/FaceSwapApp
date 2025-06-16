@@ -1,15 +1,7 @@
-<!DOCTYPE html>
-<html lang="it" class="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Face Swap Studio Pro</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="antialiased bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-300">
+{% extends 'layout.html' %}
+{% block title %}AI Face Swap Studio Pro{% endblock %}
+{% block header_title %}AI Face Swap <span class="text-blue-600">Studio Pro</span>{% endblock %}
+{% block content %}
 
     <div id="error-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-message">
         <div class="flex items-center justify-center min-h-screen px-4">
@@ -43,31 +35,7 @@
         </div>
     </div>
 
-    <div class="flex min-h-screen">
-        <aside id="sidebar" class="hidden md:flex flex-col w-56 bg-gray-800 text-gray-200 p-4 space-y-4 border-r border-gray-700 sticky top-0 h-screen overflow-y-auto">
-            <nav class="flex flex-col gap-3 text-sm">
-                <a href="{{ url_for('explore') }}" class="hover:text-white">Esplora</a>
-                <a href="{{ url_for('home') }}" class="text-white font-semibold border-l-4 border-blue-500 pl-2">Crea</a>
-                <span class="text-gray-500 cursor-not-allowed">Chat</span>
-                <span class="text-gray-500 cursor-not-allowed">Account</span>
-                <button id="gallery-toggle" class="text-left hover:text-white">Galleria</button>
-            </nav>
-            <div id="gallery-container" class="gallery-grid hidden mt-4 overflow-y-auto"></div>
-        </aside>
-
-        <div class="flex flex-col flex-1 min-h-screen">
-        <header class="relative text-center py-6 bg-gray-200 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
-            <button id="sidebar-toggle" class="md:hidden absolute left-4 top-4 p-2 rounded-md bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-400 dark:hover:bg-gray-600" aria-label="Apri menu">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </button>
-            <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-gray-800 dark:text-white">AI Face Swap <span class="text-blue-600">Studio Pro</span></h1>
-            <p class="text-md text-gray-500 dark:text-gray-400 mt-1">Workflow Professionale Guidato</p>
-            <button id="theme-toggle" class="absolute right-4 top-4 p-2 rounded-md bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-400 dark:hover:bg-gray-600 transition-colors" aria-label="Attiva tema chiaro/scuro">
-                <svg id="theme-icon" class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"></svg>
-            </button>
-        </header>
-
-        <main class="w-full max-w-7xl mx-auto p-4 flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="w-full max-w-7xl mx-auto p-4 flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             <div id="controls-column" class="flex flex-col gap-6">
 
@@ -247,7 +215,7 @@
                 <div class="flex justify-center items-center gap-2 flex-wrap">
                     <a id="download-btn" href="#" download="pro-meme-result-static.png" class="hidden items-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica PNG</a>
 
-                    <button id="add-gallery-btn" class="hidden items-center bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Aggiungi a Galleria</button>
+                    <button id="add-gallery-btn" class="hidden fixed bottom-4 right-4 z-20 items-center bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Aggiungi a Galleria</button>
                     
                     <button id="download-anim-btn" class="hidden items-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Scarica Animato</button>
                     <select id="anim-fmt" class="hidden bg-gray-700 text-sm text-white rounded-full px-3 py-2 shadow-lg cursor-pointer">
@@ -265,10 +233,10 @@
                     <button id="reset-all-btn" class="btn bg-red-800 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full text-sm shadow-lg">Reset Totale</button>
                 </div>
             </div>
-        </main>
         </div>
-    </div>
     
-    <script type="module" src="{{ url_for('static', filename='js/main.js') }}" defer></script>
-</body>
-</html>
+<div id="toast" class="fixed bottom-20 right-4 bg-gray-800 text-white px-3 py-2 rounded shadow hidden"></div>
+{% endblock %}
+{% block scripts %}
+<script type='module' src='{{ url_for('static', filename='js/main.js') }}' defer></script>
+{% endblock %}
