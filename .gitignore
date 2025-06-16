@@ -27,3 +27,4 @@ app/temp/
 temp/masks/
 
 
+.venv/
