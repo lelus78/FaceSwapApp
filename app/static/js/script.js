@@ -264,7 +264,7 @@ function renderDynamicPrompts(parts) {
             <div class="flex items-center gap-2">
                 <label for="prompt-${part}" class="w-1/4 text-sm text-right text-gray-400">${prettyPartName}:</label>
                 <input type="text" id="prompt-${part}" data-part-name="${part}" class="prompt-input w-3/4 bg-gray-900 border border-gray-600 rounded-lg p-2 text-sm text-gray-300" placeholder="Descrivi modifica per ${part}...">
-                <button class="enhance-part-btn inline-flex items-center justify-center transition bg-purple-700 hover:bg-purple-800 text-white font-bold p-2 rounded-lg" data-part-name="${part}" title="Migliora prompt con AI">✨</button>
+                <button class="enhance-part-btn btn btn-secondary text-white font-bold p-2 rounded-lg" data-part-name="${part}" title="Migliora prompt con AI">✨</button>
             </div>
         `;
         container.innerHTML += promptRow;

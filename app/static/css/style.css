@@ -23,16 +23,6 @@
     --border: #374151;
 }
 
-html {
-    transition: background-color 0.2s, color 0.2s;
-}
-
-/* --- Stili di Base e Font --- */
-body {
-    background-color: var(--bg);
-    font-family: 'Inter', sans-serif;
-    color: var(--text);
-}
 
 /* --- Stili per i Modali (Errori, Progressi) --- */
 .modal {
@@ -94,35 +84,6 @@ body {
 }
 
 /* --- Stili per i Pulsanti --- */
-.btn {
-    transition: all 0.2s ease-in-out;
-    text-align: center;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.btn:disabled {
-    cursor: not-allowed;
-    background-color: #4b5563 !important; /* gray-600 */
-    opacity: 0.6;
-}
-
-.btn-primary { background-color: var(--accent); }
-.btn-primary:hover:not(:disabled) { background-color: var(--accent-hover); }
-
-.btn-secondary { background-color: var(--secondary); }
-.btn-secondary:hover:not(:disabled) { background-color: var(--secondary-hover); }
-
-.filter-btn, .tone-btn {
-    background-color: var(--border);
-    color: var(--text);
-    border: 1px solid #4b5563;
-    padding: 6px 12px;
-    border-radius: 9999px; /* pill shape */
-    font-size: 0.875rem;
-    font-weight: 500;
-}
 
 .filter-btn.active, .tone-btn.active {
     background-color: var(--accent);
@@ -131,30 +92,7 @@ body {
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
 }
 
-/* --- Stile per gli Interruttori (Toggle Switch) --- */
-.toggle-checkbox:checked + .toggle-bg {
-    background-color: var(--accent);
-}
 
-.toggle-checkbox:checked + .toggle-bg .toggle-dot {
-    transform: translateX(1.25rem); /* Sposta il pallino di 20px */
-}
-
-/* --- Stile per l'Animazione di Caricamento (Loader/Spinner) --- */
-.loader {
-    border-color: #4b5563;
-    border-top-color: var(--accent);
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
 
 /* === NUOVI STILI PER LA SELEZIONE DEI VOLTI === */
 .face-box {
@@ -191,18 +129,6 @@ body {
     background-color: #16a34a;
 }
 
-.meme-control-btn {
-    background-color: transparent;
-    color: var(--text);
-    padding: 8px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: background-color 0.2s;
-}
-
-.meme-control-btn:hover {
-    background-color: #4b5563;
-}
 
 .meme-control-btn.active {
     background-color: var(--accent);
