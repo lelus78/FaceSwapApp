@@ -3,7 +3,10 @@
 {% block header_title %}Esplora{% endblock %}
 {% block content %}
 <div class="p-4">
-  <input type="search" id="explore-search" placeholder="Cerca" class="w-full mb-4 p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Cerca immagini">
+  <form id="explore-search-form" method="GET">
+    {{ form.csrf_token }}
+    <input type="search" name="query" id="explore-search" placeholder="Cerca" class="w-full mb-4 p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Cerca immagini">
+  </form>
   <div id="explore-grid" class="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"></div>
   <div id="sentinel" class="h-10"></div>
 </div>
