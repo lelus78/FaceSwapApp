@@ -4,11 +4,20 @@ import { updateMemePreview, handleDownloadAnimation } from './memeEditor.js';
 import { getStickerAtPosition } from './stickers.js';
 import { addToGallery } from './gallery.js';
 
-export function displayImage(imageBlobOrFile, imageElement) {
-  if (!imageBlobOrFile || !imageElement) return;
-  const oldUrl = imageElement.src;
-  if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
-  imageElement.src = URL.createObjectURL(imageBlobOrFile);
+import { drawFaceBoxes, updateSelectionHighlights, refreshFaceBoxes, detectAndDrawFaces } from "./facebox.js";
+export function displayImage(src, imageElement) {
+  if (!src || !imageElement) return;
+  const oldUrl = imageElement.dataset.blobUrl;
+  if (oldUrl) { URL.revokeObjectURL(oldUrl); imageElement.dataset.blobUrl = ''; }
+  let url = '';
+  if (src instanceof Blob || src instanceof File) {
+    url = URL.createObjectURL(src);
+    imageElement.dataset.blobUrl = url;
+  } else if (typeof src === 'string') {
+    url = src;
+  }
+  imageElement.onload = refreshFaceBoxes;
+  imageElement.src = url;
   imageElement.classList.remove('hidden');
   if (imageElement.id === 'result-image-display') {
     dom.resultPlaceholder.classList.add('hidden');
@@ -22,43 +31,6 @@ export function displayImage(imageBlobOrFile, imageElement) {
   }
 }
 
-export function drawFaceBoxes(boxesContainer, imageElement, faceArray, selectionType) {
-  if (!boxesContainer || !imageElement || !imageElement.complete || imageElement.naturalWidth === 0) return;
-  boxesContainer.innerHTML = '';
-  const rect = imageElement.getBoundingClientRect();
-  if (rect.width === 0) return;
-  const parentRect = boxesContainer.getBoundingClientRect();
-  const scaleX = rect.width / imageElement.naturalWidth;
-  const scaleY = rect.height / imageElement.naturalHeight;
-  const offsetX = rect.left - parentRect.left;
-  const offsetY = rect.top - parentRect.top;
-  faceArray.forEach((face, index) => {
-    const [x1, y1, x2, y2] = face.bbox;
-    const box = document.createElement('div');
-    box.className = 'face-box';
-    box.style.left = `${offsetX + x1 * scaleX}px`;
-    box.style.top = `${offsetY + y1 * scaleY}px`;
-    box.style.width = `${(x2 - x1) * scaleX}px`;
-    box.style.height = `${(y2 - y1) * scaleY}px`;
-    box.style.pointerEvents = 'auto';
-    const label = document.createElement('span');
-    label.className = 'face-box-label';
-    label.textContent = index + 1;
-    box.appendChild(label);
-    box.onclick = e => { e.stopPropagation(); handleFaceSelection(index, selectionType); };
-    boxesContainer.appendChild(box);
-  });
-}
-
-export function updateSelectionHighlights(container, selectedIndex) {
-  if (!container) return;
-  container.querySelectorAll('.face-box').forEach((box, i) => box.classList.toggle('selected', i === selectedIndex));
-}
-
-export function refreshFaceBoxes() {
-  drawFaceBoxes(dom.sourceFaceBoxesContainer, dom.sourceImgPreview, state.sourceFaces, 'source');
-  drawFaceBoxes(dom.targetFaceBoxesContainer, dom.resultImageDisplay, state.targetFaces, 'target');
-}
 
 export function startProgressBar(title, duration = 30) {
   dom.progressTitle.textContent = title;
@@ -98,40 +70,6 @@ export function goToStep(stepNumber) {
   const stepId = `step-${stepNumber}-${['subject', 'scene', 'upscale', 'finalize'][stepNumber - 1]}`;
   document.getElementById(stepId)?.classList.remove('hidden');
 }
-
-export async function detectAndDrawFaces(imageBlob, imageElement, boxesContainer, faceArray, selectionType) {
-  const onImageLoad = async () => {
-    try {
-      const data = await api.detectFaces(imageBlob);
-      faceArray.splice(0, faceArray.length, ...data.faces);
-      drawFaceBoxes(boxesContainer, imageElement, faceArray, selectionType);
-      updateSelectionHighlights(boxesContainer, selectionType === 'source' ? state.selectedSourceIndex : state.selectedTargetIndex);
-    } catch (err) {
-      showError('Errore Rilevamento Volti', err.message);
-      faceArray.length = 0;
-      drawFaceBoxes(boxesContainer, imageElement, [], selectionType);
-    }
-  };
-  if (imageElement.complete && imageElement.naturalWidth > 0) {
-    onImageLoad();
-  } else {
-    imageElement.onload = onImageLoad;
-  }
-}
-
-export function handleFaceSelection(index, type) {
-  if (type === 'source') {
-    state.selectedSourceIndex = state.selectedSourceIndex === index ? -1 : index;
-  } else {
-    state.selectedTargetIndex = state.selectedTargetIndex === index ? -1 : index;
-  }
-  dom.selectedSourceId.textContent = state.selectedSourceIndex > -1 ? `#${state.selectedSourceIndex + 1}` : 'Nessuno';
-  dom.selectedTargetId.textContent = state.selectedTargetIndex > -1 ? `#${state.selectedTargetIndex + 1}` : 'Nessuno';
-  updateSelectionHighlights(dom.sourceFaceBoxesContainer, state.selectedSourceIndex);
-  updateSelectionHighlights(dom.targetFaceBoxesContainer, state.selectedTargetIndex);
-  dom.swapBtn.disabled = !(state.selectedSourceIndex > -1 && state.selectedTargetIndex > -1);
-}
-
 export function handleSubjectFile(file) {
   if (!file?.type.startsWith('image/')) return;
   state.subjectFile = file;
@@ -433,10 +371,11 @@ export function setupEventListeners() {
     link.click();
   });
   dom.addGalleryBtn.addEventListener('click', () => {
-    const src = dom.memeCanvas.classList.contains('hidden') ? dom.resultImageDisplay.src : dom.memeCanvas.toDataURL('image/png');
+    updateMemePreview();
+    const src = dom.memeCanvas.toDataURL('image/png');
     const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
     const title = `Meme #${list.length + 1}`;
-    addToGallery(title, src);
+    addToGallery(title, src, dom.captionTextInput.value);
   });
   dom.downloadAnimBtn.addEventListener('click', handleDownloadAnimation);
   const getCoords = e => {
