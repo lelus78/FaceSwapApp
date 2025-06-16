@@ -34,11 +34,25 @@
         </div>
     </div>
 
-    <div class="flex flex-col min-h-screen">
+    <div class="flex min-h-screen">
+        <aside id="sidebar" class="hidden md:flex flex-col w-56 bg-gray-800 text-gray-200 p-4 space-y-4 border-r border-gray-700">
+            <nav class="flex flex-col gap-3 text-sm">
+                <a href="{{ url_for('explore') }}" class="hover:text-white">Esplora</a>
+                <a href="{{ url_for('home') }}" class="text-white font-semibold">Crea</a>
+                <span class="text-gray-500 cursor-not-allowed">Chat</span>
+                <span class="text-gray-500 cursor-not-allowed">Account</span>
+                <button id="gallery-toggle" class="text-left hover:text-white">Galleria</button>
+            </nav>
+            <div id="gallery-container" class="gallery-grid hidden mt-4 overflow-y-auto"></div>
+        </aside>
+
+        <div class="flex flex-col flex-1 min-h-screen">
         <header class="relative text-center py-6 bg-gray-200 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
+            <button id="sidebar-toggle" class="md:hidden absolute left-4 top-4 p-2 rounded-md bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-400 dark:hover:bg-gray-600" aria-label="Apri menu">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
             <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-gray-800 dark:text-white">AI Face Swap <span class="text-blue-600">Studio Pro</span></h1>
             <p class="text-md text-gray-500 dark:text-gray-400 mt-1">Workflow Professionale Guidato</p>
-            <a href="{{ url_for('explore') }}" class="absolute left-4 top-4 text-sm text-blue-600 hover:underline">Galleria</a>
             <button id="theme-toggle" class="absolute right-4 top-4 p-2 rounded-md bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-400 dark:hover:bg-gray-600 transition-colors" aria-label="Attiva tema chiaro/scuro">
                 <svg id="theme-icon" class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"></svg>
             </button>
@@ -214,9 +228,9 @@
 
             <div id="result-column" class="bg-gray-800 p-6 rounded-xl shadow-lg lg:sticky top-8 self-start">
                 <h2 class="text-3xl font-bold mb-6 text-center text-white">Anteprima</h2>
-                <div class="relative flex justify-center items-center mb-6 bg-gray-900 rounded-lg min-h-[400px] p-2 aspect-square">
-                    <img id="result-image-display" src="" alt="Risultato" class="rounded-lg max-w-full max-h-[80vh] h-auto shadow-md hidden z-0 object-contain">
-                    <canvas id="meme-canvas" class="hidden rounded-lg max-w-full max-h-[80vh] h-auto shadow-md object-contain"></canvas>
+                <div class="preview-container relative flex justify-center items-center mb-6 bg-gray-900 rounded-lg min-h-[400px] p-2">
+                    <img id="result-image-display" src="" alt="Risultato" class="rounded-lg max-w-full h-auto shadow-md hidden z-0 object-contain">
+                    <canvas id="meme-canvas" class="hidden rounded-lg max-w-full h-auto shadow-md object-contain"></canvas>
                     <div id="target-face-boxes-container" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></div>
                     <p id="result-placeholder" class="text-gray-500">Il risultato del processo apparirà qui...</p>
                 </div>
@@ -241,6 +255,7 @@
                 </div>
             </div>
         </main>
+        </div>
     </div>
     
     <script type="module" src="{{ url_for('static', filename='js/main.js') }}" defer></script>

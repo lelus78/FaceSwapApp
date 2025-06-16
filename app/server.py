@@ -246,6 +246,20 @@ def create_app():
             if sticker_paths: sticker_data.append({"category": category_name, "stickers": sticker_paths})
         return jsonify(sticker_data)
 
+    @app.route('/api/approved_memes')
+    def get_approved_memes():
+        gallery_dir = os.path.join(app.static_folder, 'gallery')
+        if not os.path.isdir(gallery_dir):
+            return jsonify([])
+        items = []
+        for fname in sorted(os.listdir(gallery_dir)):
+            if fname.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                items.append({
+                    'title': os.path.splitext(fname)[0],
+                    'url': url_for('static', filename=f'gallery/{fname}')
+                })
+        return jsonify(items)
+
     @app.route('/lottie_json/<path:sticker_path>')
     def get_lottie_json(sticker_path):
         try:
