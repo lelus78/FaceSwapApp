@@ -184,7 +184,11 @@ export function setupGalleryInteraction(container) {
 
 export function initSidebarToggle(sidebar, toggleBtn, galleryToggle, galleryContainer) {
     if (toggleBtn) {
-        toggleBtn.addEventListener('click', () => sidebar.classList.toggle('hidden'));
+        toggleBtn.setAttribute('aria-expanded', !sidebar.classList.contains('hidden'));
+        toggleBtn.addEventListener('click', () => {
+            const hidden = sidebar.classList.toggle('hidden');
+            toggleBtn.setAttribute('aria-expanded', !hidden);
+        });
     }
     if (galleryToggle && galleryContainer) {
         galleryToggle.addEventListener('click', () => galleryContainer.classList.toggle('hidden'));
