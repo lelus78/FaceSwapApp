@@ -1,5 +1,33 @@
+const GALLERY_KEY = 'galleryData';
+const USERNAME = localStorage.getItem('username') || 'user';
+
+function getGalleryData() {
+  return JSON.parse(localStorage.getItem(GALLERY_KEY) || '{}');
+}
+
+function saveGalleryData(data) {
+  localStorage.setItem(GALLERY_KEY, JSON.stringify(data));
+}
+
+function flattenUserData(data) {
+  const items = [];
+  Object.entries(data).forEach(([date, tags]) => {
+    Object.entries(tags).forEach(([tag, arr]) => {
+      arr.forEach((item, idx) => {
+        items.push({
+          ...item,
+          path: { user: USERNAME, date, tag, index: idx },
+          local: true,
+        });
+      });
+    });
+  });
+  return items;
+}
+
 export async function loadGallery(container) {
-  const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
+  const data = getGalleryData();
+  const local = flattenUserData(data[USERNAME] || {});
   let serverItems = [];
   try {
     const res = await fetch(`${window.location.origin}/api/approved_memes`);
@@ -20,7 +48,10 @@ function renderGallery(container, items) {
     img.src = m.url;
     img.alt = m.title || 'meme';
     img.className = 'w-full h-full object-cover rounded cursor-pointer';
-    if (m.local) img.dataset.local = '1';
+    if (m.local) {
+      img.dataset.local = '1';
+      card.dataset.path = JSON.stringify(m.path);
+    }
     const overlay = document.createElement('div');
     overlay.className = 'gallery-item-overlay';
     const title = document.createElement('p');
@@ -38,6 +69,11 @@ function renderGallery(container, items) {
       <a class="download-item p-1 hover:text-blue-400" download="meme.png" href="${m.url}" aria-label="Scarica">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/><path d="M7 10l5 5 5-5M12 4v11"/></svg>
       </a>
+      <button class="toggle-share p-1" aria-label="Condividi">
+        <svg class="w-4 h-4 ${m.shared ? 'text-yellow-400 fill-yellow-400' : ''}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+        </svg>
+      </button>
       <button class="remove-item p-1 hover:text-red-500" aria-label="Rimuovi">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
       </button>`;
@@ -55,19 +91,40 @@ export function setupGalleryInteraction(container) {
   container.addEventListener('click', e => {
     const copy = e.target.closest('.copy-link');
     const remove = e.target.closest('.remove-item');
+    const toggle = e.target.closest('.toggle-share');
     const download = e.target.closest('.download-item');
     const img = e.target.closest('.gallery-item img');
     if (copy) {
       navigator.clipboard.writeText(copy.dataset.url || '').catch(() => {});
     } else if (download) {
       // anchor handles download
+    } else if (toggle) {
+      const card = toggle.closest('.gallery-item');
+      const path = card && card.dataset.path ? JSON.parse(card.dataset.path) : null;
+      if (path) {
+        const data = getGalleryData();
+        const item = data[path.user]?.[path.date]?.[path.tag]?.[path.index];
+        if (item) {
+          item.shared = !item.shared;
+          saveGalleryData(data);
+          const svg = toggle.querySelector('svg');
+          svg.classList.toggle('text-yellow-400', item.shared);
+          svg.classList.toggle('fill-yellow-400', item.shared);
+          window.dispatchEvent(new Event('gallery-updated'));
+        }
+      }
     } else if (remove) {
       const card = remove.closest('.gallery-item');
       if (card?.querySelector('img')?.dataset.local === '1') {
-        const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
-        const idx = Array.from(container.children).indexOf(card);
-        list.splice(idx, 1);
-        localStorage.setItem('userGallery', JSON.stringify(list));
+        const path = card.dataset.path ? JSON.parse(card.dataset.path) : null;
+        if (path) {
+          const data = getGalleryData();
+          const arr = data[path.user]?.[path.date]?.[path.tag];
+          if (Array.isArray(arr)) {
+            arr.splice(path.index, 1);
+            saveGalleryData(data);
+          }
+        }
       }
       card?.remove();
     } else if (img) {
@@ -123,10 +180,18 @@ async function embedCaption(imgUrl, text) {
 }
 
 export async function loadExplore(container) {
-  const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
+  const data = getGalleryData();
+  const local = [];
+  Object.values(data).forEach(dates => {
+    Object.values(dates).forEach(tags => {
+      Object.values(tags).forEach(arr => {
+        arr.forEach(item => { if(item.shared) local.push(item); });
+      });
+    });
+  });
   let server = [];
   try { const r = await fetch(`${window.location.origin}/api/approved_memes`); server = await r.json(); } catch {}
-  const items = [...local, ...server].sort((a,b)=> (b.ts||0)-(a.ts||0));
+  const items = [...local, ...server.filter(m=>m.shared)].sort((a,b)=> (b.ts||0)-(a.ts||0));
   let index=0; const batch=12; let filtered=items;
   function renderSlice(reset=false){
     if(reset){container.innerHTML=''; index=0;}
@@ -162,11 +227,17 @@ export async function loadExplore(container) {
   return {fetchMore, applyFilter};
 }
 
-export async function addToGallery(title, dataUrl, caption='') {
+export async function addToGallery(title, dataUrl, caption = '', tags = [], shared = false) {
   const withText = await embedCaption(dataUrl, caption);
-  const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
-  list.push({ title, url: withText, caption, local: true, ts: Date.now() });
-  localStorage.setItem('userGallery', JSON.stringify(list));
+  const ts = Date.now();
+  const date = new Date(ts).toISOString().slice(0, 10);
+  const mainTag = (tags[0] || 'misc').toLowerCase();
+  const data = getGalleryData();
+  data[USERNAME] = data[USERNAME] || {};
+  data[USERNAME][date] = data[USERNAME][date] || {};
+  data[USERNAME][date][mainTag] = data[USERNAME][date][mainTag] || [];
+  data[USERNAME][date][mainTag].push({ title, url: withText, caption, tags, ts, shared });
+  saveGalleryData(data);
   window.dispatchEvent(new Event('gallery-updated'));
   showToast('Salvato nella galleria');
 }
