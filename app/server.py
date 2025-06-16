@@ -37,7 +37,9 @@ from flask import (
 )
 from werkzeug.utils import safe_join
 from flask_cors import CORS
+from flask_wtf import CSRFProtect
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
+from .forms import SearchForm
 from dotenv import load_dotenv
 
 try:
@@ -296,7 +298,9 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
 def create_app():
     app = Flask(__name__)
     load_dotenv()
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
+    csrf = CSRFProtect(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
     app.register_blueprint(meme_bp)
 
@@ -306,11 +310,13 @@ def create_app():
 
     @app.route("/explore")
     def explore():
-        return render_template("esplora.html")
+        form = SearchForm()
+        return render_template("esplora.html", form=form)
 
     @app.route("/gallery")
     def gallery_page():
-        return render_template("galleria.html")
+        form = SearchForm()
+        return render_template("galleria.html", form=form)
 
     @app.route("/api/stickers")
     def get_stickers_api():

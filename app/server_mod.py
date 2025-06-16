@@ -12,6 +12,7 @@ if pil_image_mod and not hasattr(pil_image_mod, 'Image'):
 from .server import create_app
 
 app = create_app()
+app.config['WTF_CSRF_ENABLED'] = False
 
 # Minimal routes required by tests
 @app.route('/swap_face', methods=['POST'])
