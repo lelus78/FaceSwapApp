@@ -1,6 +1,15 @@
 // API.JS - Modulo per la comunicazione con il server
 // BASE_URL dinamica: funziona da qualsiasi host
 const BASE_URL = window.location.origin;
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+function csrfFetch(url, options = {}) {
+    options.headers = options.headers || {};
+    if (csrfToken) {
+        options.headers['X-CSRFToken'] = csrfToken;
+    }
+    return fetch(url, options);
+}
 
 async function handleResponse(response) {
     if (!response.ok) {
@@ -32,7 +41,7 @@ async function blobToBase64(blob) {
 }
 
 export async function getStickers() {
-    const response = await fetch(`${BASE_URL}/api/stickers`);
+    const response = await csrfFetch(`${BASE_URL}/api/stickers`);
     await handleResponse(response);
     return response.json();
 }
@@ -40,7 +49,7 @@ export async function getStickers() {
 export async function prepareSubject(subjectFile) {
     const formData = new FormData();
     formData.append('subject_image', subjectFile);
-    const response = await fetch(`${BASE_URL}/prepare_subject`, { method: 'POST', body: formData, cache: 'no-cache' });
+    const response = await csrfFetch(`${BASE_URL}/prepare_subject`, { method: 'POST', body: formData, cache: 'no-cache' });
     await handleResponse(response);
     return response.blob();
 }
@@ -49,7 +58,7 @@ export async function createScene(processedSubjectBlob, finalPrompt) {
     const formData = new FormData();
     formData.append('subject_data', processedSubjectBlob);
     formData.append('prompt', finalPrompt);
-    const response = await fetch(`${BASE_URL}/create_scene`, { method: 'POST', body: formData, cache: 'no-cache' });
+    const response = await csrfFetch(`${BASE_URL}/create_scene`, { method: 'POST', body: formData, cache: 'no-cache' });
     await handleResponse(response);
     return response.blob();
 }
@@ -59,7 +68,7 @@ export async function upscaleAndDetail(sceneImageBlob, enableHires, denoising) {
     formData.append('scene_image', sceneImageBlob);
     formData.append('enable_hires', enableHires);
     formData.append('tile_denoising_strength', denoising);
-    const response = await fetch(`${BASE_URL}/detail_and_upscale`, { method: 'POST', body: formData, cache: 'no-cache' });
+    const response = await csrfFetch(`${BASE_URL}/detail_and_upscale`, { method: 'POST', body: formData, cache: 'no-cache' });
     await handleResponse(response);
     return response.blob();
 }
@@ -67,7 +76,7 @@ export async function upscaleAndDetail(sceneImageBlob, enableHires, denoising) {
 export async function detectFaces(imageBlob) {
     const formData = new FormData();
     formData.append('image', imageBlob);
-    const response = await fetch(`${BASE_URL}/detect_faces`, { method: 'POST', body: formData });
+    const response = await csrfFetch(`${BASE_URL}/detect_faces`, { method: 'POST', body: formData });
     await handleResponse(response);
     return response.json();
 }
@@ -78,7 +87,7 @@ export async function performSwap(targetImageBlob, sourceImageFile, sourceIndex,
     formData.append('source_face_image', sourceImageFile);
     formData.append('source_face_index', sourceIndex);
     formData.append('target_face_index', targetIndex);
-    const response = await fetch(`${BASE_URL}/final_swap`, { method: 'POST', body: formData, cache: 'no-cache' });
+    const response = await csrfFetch(`${BASE_URL}/final_swap`, { method: 'POST', body: formData, cache: 'no-cache' });
     await handleResponse(response);
     return response.blob();
 }
@@ -86,7 +95,7 @@ export async function performSwap(targetImageBlob, sourceImageFile, sourceIndex,
 // Modificata per inviare l'immagine in base64
 export async function enhancePrompt(imageBlob, userPrompt) {
     const base64ImageData = await blobToBase64(imageBlob);
-    const response = await fetch(`${BASE_URL}/enhance_prompt`, {
+    const response = await csrfFetch(`${BASE_URL}/enhance_prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_data: base64ImageData, prompt_text: userPrompt })
@@ -98,7 +107,7 @@ export async function enhancePrompt(imageBlob, userPrompt) {
 // Modificata per inviare l'immagine in base64
 export async function enhancePartPrompt(partName, userPrompt, imageBlob) {
     const base64ImageData = await blobToBase64(imageBlob);
-    const response = await fetch(`${BASE_URL}/enhance_part_prompt`, {
+    const response = await csrfFetch(`${BASE_URL}/enhance_part_prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ part_name: partName, prompt_text: userPrompt, image_data: base64ImageData })
@@ -109,7 +118,7 @@ export async function enhancePartPrompt(partName, userPrompt, imageBlob) {
 
 export async function generateCaption(imageBlob, tone) {
     const base64ImageData = await blobToBase64(imageBlob); // Usa la nuova helper
-    const response = await fetch(`${BASE_URL}/meme/generate_caption`, {
+    const response = await csrfFetch(`${BASE_URL}/meme/generate_caption`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_data: base64ImageData, tone: tone })
@@ -119,7 +128,7 @@ export async function generateCaption(imageBlob, tone) {
 }
 
 export async function saveResultVideo(videoBlob, format) {
-    const response = await fetch(`${BASE_URL}/save_result_video?fmt=${format}`, {
+    const response = await csrfFetch(`${BASE_URL}/save_result_video?fmt=${format}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/octet-stream' 
@@ -138,7 +147,7 @@ export async function generateWithMask(imageBlob, partName, prompt) { // Aggiunt
     formData.append('prompt', prompt);
     // Cambiato l'endpoint da generate_with_mask a generate_all_parts
     // per coerenza con il nuovo inpainting basato sul crop
-    const response = await fetch(`${BASE_URL}/generate_all_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
+    const response = await csrfFetch(`${BASE_URL}/generate_all_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
     await handleResponse(response);
     return response.blob();
 }
@@ -146,7 +155,7 @@ export async function generateWithMask(imageBlob, partName, prompt) { // Aggiunt
 export async function analyzeParts(imageBlob) {
     const formData = new FormData();
     formData.append('image', imageBlob);
-    const response = await fetch(`${BASE_URL}/analyze_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
+    const response = await csrfFetch(`${BASE_URL}/analyze_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
     await handleResponse(response);
     return response.json();
 }
@@ -158,7 +167,7 @@ export async function generateAllParts(imageBlob, prompts) {
     
     // NOTA: il problema precedente era che questo chiamava /generate_with_mask.
     // Assicurati che qui chiami generate_all_parts
-    const response = await fetch(`${BASE_URL}/generate_all_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
+    const response = await csrfFetch(`${BASE_URL}/generate_all_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
     await handleResponse(response);
     return response.blob();
 }
