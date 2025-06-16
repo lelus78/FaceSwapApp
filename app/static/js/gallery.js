@@ -26,8 +26,11 @@ function renderGallery(container, items) {
     const title = document.createElement('p');
     title.className = 'text-xs text-white truncate';
     title.textContent = m.title || '';
+    const caption = document.createElement('p');
+    caption.className = 'text-xs text-gray-300 truncate';
+    caption.textContent = m.caption || '';
     const time = document.createElement('p');
-    time.className = 'text-[10px] text-gray-300';
+    time.className = 'text-[10px] text-gray-400';
     time.textContent = m.ts ? new Date(m.ts).toLocaleString() : '';
     const actions = document.createElement('div');
     actions.className = 'flex justify-end gap-1';
@@ -42,6 +45,7 @@ function renderGallery(container, items) {
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
       </button>`;
     overlay.appendChild(title);
+    overlay.appendChild(caption);
     overlay.appendChild(time);
     overlay.appendChild(actions);
     card.appendChild(img);
@@ -162,11 +166,54 @@ export async function loadExplore(container) {
   return {fetchMore, applyFilter};
 }
 
-export async function addToGallery(title, dataUrl, caption='') {
+async function fetchCaptionAndTags(dataUrl) {
+  const base64 = dataUrl.split(',')[1];
+  let caption = '';
+  try {
+    const res = await fetch(`${window.location.origin}/meme/generate_caption`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_data: base64 })
+    });
+    caption = (await res.json()).caption || '';
+  } catch (err) {
+    console.error('Errore generazione didascalia', err);
+  }
+  let tags = [];
+  try {
+    const res = await fetch(`${window.location.origin}/meme/generate_tags`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_data: base64 })
+    });
+    tags = (await res.json()).tags || [];
+  } catch (err) {
+    const fallback = [
+      'meme', 'divertente', 'umorismo', 'virale', 'random', 'scherzo',
+      'ironico', 'epico', 'assurdo', 'figo'
+    ];
+    while (tags.length < 3) {
+      const t = fallback[Math.floor(Math.random() * fallback.length)];
+      if (!tags.includes(t)) tags.push(t);
+    }
+  }
+  return { caption, tags };
+}
+
+function storeMetadata(entry) {
+  const meta = JSON.parse(localStorage.getItem('meta.json') || '[]');
+  meta.push(entry);
+  localStorage.setItem('meta.json', JSON.stringify(meta));
+}
+
+export async function addToGallery(title, dataUrl) {
+  const { caption, tags } = await fetchCaptionAndTags(dataUrl);
   const withText = await embedCaption(dataUrl, caption);
+  const entry = { title, url: withText, caption, tags, local: true, ts: Date.now() };
   const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
-  list.push({ title, url: withText, caption, local: true, ts: Date.now() });
+  list.push(entry);
   localStorage.setItem('userGallery', JSON.stringify(list));
+  storeMetadata({ url: withText, caption, tags });
   window.dispatchEvent(new Event('gallery-updated'));
   showToast('Salvato nella galleria');
 }

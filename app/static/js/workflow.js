@@ -425,7 +425,7 @@ export function setupEventListeners() {
     const src = dom.memeCanvas.toDataURL('image/png');
     const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
     const title = `Meme #${list.length + 1}`;
-    addToGallery(title, src, dom.captionTextInput.value);
+    addToGallery(title, src);
   });
   dom.shareBtn.addEventListener('click', handleShare);
   dom.downloadAnimBtn.addEventListener('click', handleDownloadAnimation);
