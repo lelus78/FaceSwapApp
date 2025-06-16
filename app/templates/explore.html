@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="it" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Explore Gallery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    body{font-family:'Inter',sans-serif;}
+    .sidebar svg,.navbar svg{stroke:currentColor}
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+  <div class="flex min-h-screen">
+    <!-- Sidebar -->
+    <aside class="sidebar w-56 bg-gray-800 flex-shrink-0 hidden sm:flex flex-col py-6 px-4 space-y-4">
+      <h1 class="text-xl font-bold text-white mb-6">AI Gallery</h1>
+      <nav class="flex flex-col space-y-2">
+        <a href="{{ url_for('explore') }}" class="flex items-center gap-3 text-white font-semibold"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z"></path></svg>Explore</a>
+        <a href="{{ url_for('home') }}" class="flex items-center gap-3 text-gray-300 hover:text-white transition-all"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20v-6m0 0V4m0 10H6m6 0h6"></path></svg>Create</a>
+        <span class="flex items-center gap-3 text-gray-500 cursor-not-allowed"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Chat</span>
+        <span class="flex items-center gap-3 text-gray-500 cursor-not-allowed"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.121 17.804A3 3 0 018 16h8a3 3 0 012.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>Account</span>
+      </nav>
+    </aside>
+
+    <!-- Main content -->
+    <div class="flex-1 flex flex-col">
+      <!-- Navbar -->
+      <header class="navbar sticky top-0 z-10 bg-gray-900/80 backdrop-blur flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-700">
+        <form class="flex-1 max-w-md">
+          <input type="search" placeholder="Search" class="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" aria-label="Cerca">
+        </form>
+        <div class="flex items-center gap-4 ml-4">
+          <button id="theme-toggle" aria-label="Toggle dark mode" class="p-2 rounded-md hover:bg-gray-700 transition"><svg id="theme-icon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg></button>
+          <button class="p-2 rounded-md hover:bg-gray-700 transition" aria-label="Notifications"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg></button>
+        </div>
+      </header>
+
+      <main class="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" id="gallery">
+          <!-- Cards injected by JS -->
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initTheme } from '{{ url_for('static', filename='js/theme.js') }}';
+    const gallery = document.getElementById('gallery');
+    for (let i = 1; i <= 12; i++) {
+      const card = document.createElement('div');
+      card.className = 'bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition-all hover:scale-105';
+      const img = document.createElement('img');
+      img.src = `https://picsum.photos/seed/${i}/600/400`;
+      img.alt = 'Immagine demo';
+      img.className = 'w-full h-40 object-cover';
+      card.appendChild(img);
+      gallery.appendChild(card);
+    }
+    initTheme('theme-toggle', 'theme-icon');
+  </script>
+</body>
+</html>
