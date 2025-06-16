@@ -169,3 +169,10 @@ def test_home_page(client):
     res = client.get('/')
     assert res.status_code == 200
     assert b"AI Face Swap Studio Pro" in res.data
+
+def test_frontend_elements_present(client):
+    res = client.get('/')
+    html = res.data.decode()
+    assert 'id="source-face-boxes-container"' in html
+    assert 'id="target-face-boxes-container"' in html
+    assert 'id="add-gallery-btn"' in html
