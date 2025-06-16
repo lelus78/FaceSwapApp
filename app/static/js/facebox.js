@@ -1,92 +1,92 @@
 import { state, dom } from './state.js';
-import * as api from './api.js';
-import { showError } from './workflow.js';
+import { handleFaceSelection } from './workflow.js';
 
+/**
+ * Disegna i box di selezione sui volti rilevati.
+ * Usa getBoundingClientRect per calcolare l'offset tra l'immagine e il suo contenitore.
+ * @param {HTMLElement} container - Il contenitore dove disegnare i box.
+ * @param {HTMLImageElement} image - L'elemento <img> di riferimento.
+ * @param {Array} faces - L'array dei volti rilevati.
+ * @param {string} type - 'source' o 'target'.
+ */
 export function drawFaceBoxes(container, image, faces, type) {
-  if (!container || !image || !image.complete || image.naturalWidth === 0) return;
-  container.innerHTML = '';
+    // Se non abbiamo gli elementi necessari o l'immagine non è caricata, puliamo e usciamo.
+    if (!container || !image || !image.complete || image.naturalWidth === 0) {
+        if (container) container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = '';
 
-  // 1. Prendi le dimensioni del contenitore dei box
-  const containerWidth = container.offsetWidth;
-  const containerHeight = container.offsetHeight;
+    const imageRect = image.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
 
-  // 2. Prendi le dimensioni REALI dell'immagine renderizzata
-  const renderWidth = image.offsetWidth;
-  const renderHeight = image.offsetHeight;
+    // Se l'immagine non è ancora visibile, usciamo per evitare calcoli errati.
+    if (imageRect.width === 0) return;
 
-  // 3. Calcola lo spazio vuoto (offset) attorno all'immagine
-  const offsetX = (containerWidth - renderWidth) / 2;
-  const offsetY = (containerHeight - renderHeight) / 2;
+    // Calcoliamo la scala e l'offset basandoci sulla posizione e dimensione reale degli elementi.
+    const scaleX = imageRect.width / image.naturalWidth;
+    const scaleY = imageRect.height / image.naturalHeight;
+    const offsetX = imageRect.left - containerRect.left;
+    const offsetY = imageRect.top - containerRect.top;
 
-  // 4. Calcola la scala basandoti sulle dimensioni reali
-  const scaleX = renderWidth / image.naturalWidth;
-  const scaleY = renderHeight / image.naturalHeight;
+    faces.forEach((face, idx) => {
+        const [x1, y1, x2, y2] = face.bbox;
+        const box = document.createElement('div');
+        box.className = 'face-box';
 
-  faces.forEach((face, idx) => {
-    const [x1, y1, x2, y2] = face.bbox;
-    const box = document.createElement('div');
-    box.className = 'face-box';
+        // Applichiamo scala e offset per un posizionamento preciso.
+        box.style.left = `${offsetX + (x1 * scaleX)}px`;
+        box.style.top = `${offsetY + (y1 * scaleY)}px`;
+        box.style.width = `${(x2 - x1) * scaleX}px`;
+        box.style.height = `${(y2 - y1) * scaleY}px`;
+        box.style.pointerEvents = 'auto'; // Assicura che i box siano sempre cliccabili.
 
-    box.style.left = `${x1 * scaleX + offsetX}px`;
-    box.style.top = `${y1 * scaleY + offsetY}px`;
-    box.style.width = `${(x2 - x1) * scaleX}px`;
-    box.style.height = `${(y2 - y1) * scaleY}px`;
+        const label = document.createElement('span');
+        label.className = 'face-box-label';
+        label.textContent = idx + 1;
+        box.appendChild(label);
 
-    const label = document.createElement('span');
-    label.className = 'face-box-label';
-    label.textContent = idx + 1;
-    box.appendChild(label);
-
-    box.onclick = e => { e.stopPropagation(); handleFaceSelection(idx, type); };
-    container.appendChild(box);
-  });
-}
-
-export function updateSelectionHighlights(container, selectedIndex) {
-  if (!container) return;
-  container.querySelectorAll('.face-box').forEach((b,i)=>b.classList.toggle('selected', i===selectedIndex));
-}
-
-export function refreshFaceBoxes() {
-  if (dom.sourceImgPreview && dom.sourceImgPreview.src) {
-    drawFaceBoxes(dom.sourceFaceBoxesContainer, dom.sourceImgPreview, state.sourceFaces, 'source');
-  }
-  if (dom.resultImageDisplay && dom.resultImageDisplay.src) {
-    drawFaceBoxes(dom.targetFaceBoxesContainer, dom.resultImageDisplay, state.targetFaces, 'target');
-  }
-}
-
-export async function detectAndDrawFaces(blob, image, container, faces, type) {
-  try {
-    const data = await api.detectFaces(blob);
-    faces.splice(0, faces.length, ...data.faces);
-    drawFaceBoxes(container, image, faces, type);
-    updateSelectionHighlights(container, type==='source' ? state.selectedSourceIndex : state.selectedTargetIndex);
-  } catch (err) {
-    showError('Errore Rilevamento Volti', err.message);
-    faces.length = 0;
-    drawFaceBoxes(container, image, [], type);
-  }
-}
-
-function handleFaceSelection(index, type) {
-  if (type === 'source') {
-    state.selectedSourceIndex = index === state.selectedSourceIndex ? -1 : index;
-  } else {
-    state.selectedTargetIndex = index === state.selectedTargetIndex ? -1 : index;
-  }
-  updateSelectionHighlights(type==='source' ? dom.sourceFaceBoxesContainer : dom.targetFaceBoxesContainer, index);
-  dom.selectedSourceId.textContent = state.selectedSourceIndex > -1 ? state.selectedSourceIndex + 1 : 'Nessuno';
-  dom.selectedTargetId.textContent = state.selectedTargetIndex > -1 ? state.selectedTargetIndex + 1 : 'Nessuno';
-  dom.swapBtn.disabled = state.selectedSourceIndex < 0 || state.selectedTargetIndex < 0;
-}
-
-export function initFaceBoxObservers() {
-  if (window.ResizeObserver) {
-    const ro = new ResizeObserver(refreshFaceBoxes);
-    [dom.resultImageDisplay, dom.sourceImgPreview].forEach(el => {
-      if(el) ro.observe(el);
+        box.onclick = (e) => {
+            e.stopPropagation();
+            handleFaceSelection(idx, type);
+        };
+        container.appendChild(box);
     });
-  }
-  window.addEventListener('resize', refreshFaceBoxes);
+}
+
+/**
+ * Aggiorna l'evidenziazione visiva del box selezionato.
+ * @param {HTMLElement} container - Il contenitore dei box.
+ * @param {number} selectedIndex - L'indice del box da evidenziare.
+ */
+export function updateSelectionHighlights(container, selectedIndex) {
+    if (!container) return;
+    container.querySelectorAll('.face-box').forEach((box, i) => {
+        box.classList.toggle('selected', i === selectedIndex);
+    });
+}
+
+/**
+ * Funzione di utility per ridisegnare i box, utile per il resize della finestra.
+ */
+export function refreshFaceBoxes() {
+    if (dom.sourceImgPreview && dom.sourceImgPreview.src) {
+        drawFaceBoxes(dom.sourceFaceBoxesContainer, dom.sourceImgPreview, state.sourceFaces, 'source');
+    }
+    if (dom.resultImageDisplay && dom.resultImageDisplay.src) {
+        drawFaceBoxes(dom.targetFaceBoxesContainer, dom.resultImageDisplay, state.targetFaces, 'target');
+    }
+}
+
+/**
+ * Inizializza gli observer che ridisegnano i box quando la finestra o le immagini vengono ridimensionate.
+ */
+export function initFaceBoxObservers() {
+    if (window.ResizeObserver) {
+        const ro = new ResizeObserver(refreshFaceBoxes);
+        if (dom.resultImageDisplay) ro.observe(dom.resultImageDisplay);
+        if (dom.sourceImgPreview) ro.observe(dom.sourceImgPreview);
+    }
+    // Aggiungiamo un listener anche per il resize della finestra come fallback.
+    window.addEventListener('resize', refreshFaceBoxes);
 }
