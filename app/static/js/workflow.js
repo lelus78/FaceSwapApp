@@ -266,6 +266,32 @@ export async function handleGenerateCaption() {
   }
 }
 
+export async function handleShare() {
+  updateMemePreview();
+  await new Promise(r => setTimeout(r, 50));
+  const url = dom.memeCanvas.classList.contains('hidden')
+    ? dom.resultImageDisplay.src
+    : dom.memeCanvas.toDataURL('image/png');
+  if (!navigator.share) {
+    showError('Condivisione non supportata', 'Scarica l\'immagine e condividila manualmente.');
+    return;
+  }
+  try {
+    let shareData = { title: 'Il mio meme' };
+    if (navigator.canShare && url.startsWith('data:')) {
+      const blob = await (await fetch(url)).blob();
+      const file = new File([blob], 'meme.png', { type: blob.type || 'image/png' });
+      if (navigator.canShare({ files: [file] })) shareData.files = [file];
+      else shareData.url = url;
+    } else {
+      shareData.url = url;
+    }
+    await navigator.share(shareData);
+  } catch (err) {
+    showError('Errore condivisione', err.message);
+  }
+}
+
 export function setupEventListeners() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
@@ -385,6 +411,7 @@ export function setupEventListeners() {
     const title = `Meme #${list.length + 1}`;
     addToGallery(title, src, dom.captionTextInput.value);
   });
+  dom.shareBtn.addEventListener('click', handleShare);
   dom.downloadAnimBtn.addEventListener('click', handleDownloadAnimation);
   const getCoords = e => {
     const rect = dom.memeCanvas.getBoundingClientRect();
