@@ -2,11 +2,36 @@
 // === AI FACE SWAP STUDIO PRO 2.0 - STYLE.CSS (REFACTORED FOR WIZARD WORKFLOW) ===
 // =================================================================================== */
 
+/* --- Variabili Tema --- */
+:root {
+    --bg: #f9fafb;
+    --card-bg: #ffffff;
+    --text: #374151;
+    --muted: #6b7280;
+    --border: #d1d5db;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --secondary: #581c87;
+    --secondary-hover: #6d28d9;
+}
+
+.dark {
+    --bg: #111827;
+    --card-bg: #1f2937;
+    --text: #d1d5db;
+    --muted: #9ca3af;
+    --border: #374151;
+}
+
+html {
+    transition: background-color 0.2s, color 0.2s;
+}
+
 /* --- Stili di Base e Font --- */
 body {
-    background-color: #111827; /* Corrisponde a bg-gray-900 di Tailwind */
+    background-color: var(--bg);
     font-family: 'Inter', sans-serif;
-    color: #d1d5db; /* Corrisponde a text-gray-300 */
+    color: var(--text);
 }
 
 /* --- Stili per i Modali (Errori, Progressi) --- */
@@ -47,17 +72,17 @@ body {
 
 /* --- Stili per le Aree di Upload --- */
 .upload-box {
-    border: 2px dashed #374151; /* gray-700 */
+    border: 2px dashed var(--border);
     transition: all 0.2s ease-in-out;
-    background-color: #1f2937; /* gray-800 */
+    background-color: var(--card-bg);
     position: relative;
     overflow: hidden;
     cursor: pointer;
 }
 
 .upload-box:hover, .upload-box.drag-over {
-    border-color: #3b82f6; /* blue-500 */
-    background-color: #374151; /* gray-700 */
+    border-color: var(--accent);
+    background-color: var(--border);
 }
 
 .upload-box img {
@@ -83,16 +108,16 @@ body {
     opacity: 0.6;
 }
 
-.btn-primary { background-color: #2563eb; } /* blue-600 */
-.btn-primary:hover:not(:disabled) { background-color: #1d4ed8; } /* blue-700 */
+.btn-primary { background-color: var(--accent); }
+.btn-primary:hover:not(:disabled) { background-color: var(--accent-hover); }
 
-.btn-secondary { background-color: #581c87; } /* purple-900 */
-.btn-secondary:hover:not(:disabled) { background-color: #6d28d9; } /* purple-700 */
+.btn-secondary { background-color: var(--secondary); }
+.btn-secondary:hover:not(:disabled) { background-color: var(--secondary-hover); }
 
 .filter-btn, .tone-btn {
-    background-color: #374151; /* gray-700 */
-    color: #d1d5db; /* gray-300 */
-    border: 1px solid #4b5563; /* gray-600 */
+    background-color: var(--border);
+    color: var(--text);
+    border: 1px solid #4b5563;
     padding: 6px 12px;
     border-radius: 9999px; /* pill shape */
     font-size: 0.875rem;
@@ -100,15 +125,15 @@ body {
 }
 
 .filter-btn.active, .tone-btn.active {
-    background-color: #3b82f6; /* blue-500 */
-    color: white;
-    border-color: #3b82f6;
+    background-color: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
 }
 
 /* --- Stile per gli Interruttori (Toggle Switch) --- */
 .toggle-checkbox:checked + .toggle-bg {
-    background-color: #3b82f6; /* Colore quando attivo */
+    background-color: var(--accent);
 }
 
 .toggle-checkbox:checked + .toggle-bg .toggle-dot {
@@ -117,8 +142,8 @@ body {
 
 /* --- Stile per l'Animazione di Caricamento (Loader/Spinner) --- */
 .loader {
-    border-color: #4b5563; /* Colore base del bordo */
-    border-top-color: #3b82f6; /* Colore della parte che gira */
+    border-color: #4b5563;
+    border-top-color: var(--accent);
     animation: spin 1s linear infinite;
 }
 
@@ -134,7 +159,7 @@ body {
 /* === NUOVI STILI PER LA SELEZIONE DEI VOLTI === */
 .face-box {
     position: absolute;
-    border: 2px solid #3b82f6; /* blue-500 */
+    border: 2px solid var(--accent);
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
@@ -142,7 +167,7 @@ body {
 
 .face-box:hover {
     border-width: 3px;
-    border-color: #f59e0b; /* amber-500 */
+    border-color: #f59e0b;
 }
 
 .face-box.selected {
@@ -154,7 +179,7 @@ body {
     position: absolute;
     top: 0;
     left: 0;
-    background-color: #3b82f6; /* blue-500 */
+    background-color: var(--accent);
     color: white;
     font-size: 12px;
     font-weight: bold;
@@ -163,12 +188,12 @@ body {
 }
 
 .face-box.selected .face-box-label {
-    background-color: #16a34a; /* green-600 */
+    background-color: #16a34a;
 }
 
 .meme-control-btn {
     background-color: transparent;
-    color: #d1d5db; /* gray-300 */
+    color: var(--text);
     padding: 8px;
     font-size: 0.875rem;
     font-weight: 500;
@@ -176,12 +201,12 @@ body {
 }
 
 .meme-control-btn:hover {
-    background-color: #4b5563; /* gray-600 */
+    background-color: #4b5563;
 }
 
 .meme-control-btn.active {
-    background-color: #2563eb; /* blue-600 */
-    color: white;
+    background-color: var(--accent);
+    color: #fff;
 }
 
 
