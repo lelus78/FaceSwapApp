@@ -16,10 +16,10 @@
         <div class="modal-content bg-gray-900 border border-gray-700 text-white rounded-lg p-8 shadow-2xl max-w-sm mx-auto w-full">
             <h2 id="progress-title" class="text-xl font-bold text-center mb-4">Elaborazione AI in corso...</h2>
             <p class="text-sm text-gray-400 text-center mb-4">Attendere prego, il tuo PC sta lavorando sodo!</p>
-            <div class="w-full bg-gray-700 rounded-full h-4">
-                <div id="progress-bar" class="bg-blue-600 h-4 rounded-full transition-all duration-500 ease-linear" style="width: 0%"></div>
+            <div class="w-full bg-gray-700 rounded-full h-4" aria-hidden="true">
+                <div id="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" class="bg-blue-600 h-4 rounded-full transition-all duration-500 ease-linear" style="width: 0%"></div>
             </div>
-            <p id="progress-text" class="text-center text-blue-300 mt-2 font-mono">0%</p>
+            <p id="progress-text" class="text-center text-blue-300 mt-2 font-mono" aria-live="polite">0%</p>
         </div>
     </div>
 </div>
