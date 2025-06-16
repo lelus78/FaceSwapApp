@@ -9,25 +9,33 @@ export function displayImage(src, imageElement) {
   if (!src || !imageElement) return;
   const oldUrl = imageElement.dataset.blobUrl;
   if (oldUrl) { URL.revokeObjectURL(oldUrl); imageElement.dataset.blobUrl = ''; }
-  let url = '';
-  if (src instanceof Blob || src instanceof File) {
-    url = URL.createObjectURL(src);
+
+  const finalize = url => {
+    imageElement.onload = refreshFaceBoxes;
+    imageElement.src = url;
+    imageElement.classList.remove('hidden');
+    if (imageElement.id === 'result-image-display') {
+      dom.resultPlaceholder.classList.add('hidden');
+      dom.downloadBtn.classList.remove('hidden');
+      dom.addGalleryBtn.classList.remove('hidden');
+      dom.shareBtn.classList.remove('hidden');
+    } else if (imageElement.id === 'subject-img-preview') {
+      dom.subjectUploadPrompt.style.display = 'none';
+    } else if (imageElement.id === 'source-img-preview') {
+      dom.sourceUploadPrompt.style.opacity = '0';
+    }
+  };
+
+  if (src instanceof File) {
+    const reader = new FileReader();
+    reader.onload = () => finalize(reader.result);
+    reader.readAsDataURL(src);
+  } else if (src instanceof Blob) {
+    const url = URL.createObjectURL(src);
     imageElement.dataset.blobUrl = url;
+    finalize(url);
   } else if (typeof src === 'string') {
-    url = src;
-  }
-  imageElement.onload = refreshFaceBoxes;
-  imageElement.src = url;
-  imageElement.classList.remove('hidden');
-  if (imageElement.id === 'result-image-display') {
-    dom.resultPlaceholder.classList.add('hidden');
-    dom.downloadBtn.classList.remove('hidden');
-    dom.addGalleryBtn.classList.remove('hidden');
-    dom.shareBtn.classList.remove('hidden');
-  } else if (imageElement.id === 'subject-img-preview') {
-    dom.subjectUploadPrompt.style.display = 'none';
-  } else if (imageElement.id === 'source-img-preview') {
-    dom.sourceUploadPrompt.style.opacity = '0';
+    finalize(src);
   }
 }
 
