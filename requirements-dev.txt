@@ -1,7 +1,11 @@
 # -------------------------------------------------
-#  Dipendenze di base per far partire l’app
+#  Dipendenze base dell’app
 # -------------------------------------------------
--r requirements-base.txt        # Flask, flask-cors, requests, …
+Flask==3.1.1
+flask-cors==6.0.0
+python-dotenv==1.1.0         #  <-- mancava, ora c’è
+requests==2.32.4
+tqdm==4.67.1
 
 # -------------------------------------------------
 #  Dev & test
@@ -11,7 +15,6 @@ pytest-cov==5.0.0
 yapf==0.43.0
 
 # -------------------------------------------------
-#  Extra indispensabili per import/run
+#  Import obbligatori ma leggeri
 # -------------------------------------------------
-python-dotenv==1.1.0            # load_dotenv in run.py
-opencv-python-headless==4.11.0.86  # cv2, ma senza GUI → peso ridotto
+opencv-python-headless==4.11.0.86   # cv2 senza GUI (≈ 40 MB)
