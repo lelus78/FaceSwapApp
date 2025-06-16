@@ -1,5 +1,17 @@
--r requirements-base.txt
+# -------------------------------------------------
+#  Dipendenze di base per far partire l’app
+# -------------------------------------------------
+-r requirements-base.txt        # Flask, flask-cors, requests, …
 
+# -------------------------------------------------
+#  Dev & test
+# -------------------------------------------------
 pytest==8.2.2
 pytest-cov==5.0.0
 yapf==0.43.0
+
+# -------------------------------------------------
+#  Extra indispensabili per import/run
+# -------------------------------------------------
+python-dotenv==1.1.0            # load_dotenv in run.py
+opencv-python-headless==4.11.0.86  # cv2, ma senza GUI → peso ridotto
