@@ -37,7 +37,9 @@ from flask import (
 )
 from werkzeug.utils import safe_join
 from flask_cors import CORS
+from flask_wtf import CSRFProtect
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
+from .forms import SearchForm
 from dotenv import load_dotenv
 
 try:
@@ -296,7 +298,9 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
 def create_app():
     app = Flask(__name__)
     load_dotenv()
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
+    csrf = CSRFProtect(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
     app.register_blueprint(meme_bp)
 
@@ -306,11 +310,13 @@ def create_app():
 
     @app.route("/explore")
     def explore():
-        return render_template("esplora.html")
+        form = SearchForm()
+        return render_template("esplora.html", form=form)
 
     @app.route("/gallery")
     def gallery_page():
-        return render_template("galleria.html")
+        form = SearchForm()
+        return render_template("galleria.html", form=form)
 
     @app.route("/api/stickers")
     def get_stickers_api():
@@ -336,63 +342,44 @@ def create_app():
                 )
         return jsonify(sticker_data)
 
-    def load_user_gallery(username):
-        user_dir = os.path.join(app.static_folder, "gallery", username)
-        meta_path = os.path.join(user_dir, "gallery.json")
-        items = []
-        data = []
-        if os.path.isfile(meta_path):
-            try:
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception:
-                data = []
-        if data:
-            for item in data:
-                fname = item.get("file")
-                if not fname:
-                    continue
-                path = os.path.join(user_dir, fname)
-                if not os.path.isfile(path):
-                    continue
-                items.append(
-                    {
-                        "title": item.get("title", os.path.splitext(fname)[0]),
-                        "url": url_for(
-                            "static", filename=f"gallery/{username}/{fname}"
-                        ),
-                        "shared": bool(item.get("shared")),
-                    }
-                )
-        elif os.path.isdir(user_dir):
-            for fname in sorted(os.listdir(user_dir)):
-                if fname.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
-                    items.append(
-                        {
-                            "title": os.path.splitext(fname)[0],
-                            "url": url_for(
-                                "static", filename=f"gallery/{username}/{fname}"
-                            ),
-                            "shared": False,
-                        }
-                    )
-        return items
 
     @app.route("/api/approved_memes")
     def get_approved_memes():
-        gallery_root = os.path.join(app.static_folder, "gallery")
-        if not os.path.isdir(gallery_root):
+        gallery_dir = os.path.join(app.static_folder, "gallery")
+        if not os.path.isdir(gallery_dir):
             return jsonify([])
 
-        user = request.args.get("user")
-        if user:
-            return jsonify(load_user_gallery(user))
+        def collect_items(path):
+            meta = {}
+            meta_path = os.path.join(path, "meta.json")
+            if os.path.isfile(meta_path):
+                try:
+                    with open(meta_path, "r", encoding="utf-8") as f:
+                        meta = json.load(f) or {}
+                except Exception:
+                    meta = {}
+            for fname in sorted(os.listdir(path)):
+                if not fname.lower().endswith((".png", "jpg", "jpeg", "webp", "gif")):
+                    continue
+                info = meta.get(fname, {})
+                if not info.get("shared"):
+                    continue
+                rel = os.path.relpath(os.path.join(path, fname), app.static_folder)
+                yield {
+                    "title": info.get("title", os.path.splitext(fname)[0]),
+                    "url": url_for("static", filename=rel.replace(os.sep, "/")),
+                    "caption": info.get("caption", ""),
+                    "tags": info.get("tags", []),
+                    "ts": info.get("ts"),
+                    "shared": True,
+                }
 
         items = []
-        for username in sorted(os.listdir(gallery_root)):
-            items.extend(
-                [i for i in load_user_gallery(username) if i.get("shared")]
-            )
+
+        for root, dirs, files in os.walk(gallery_dir):
+            items.extend(list(collect_items(root)))
+
+        items.sort(key=lambda x: x.get("ts") or 0, reverse=True)
         return jsonify(items)
 
     @app.route("/api/memes")
