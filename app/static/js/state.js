@@ -27,7 +27,7 @@ export function assignDomElements() {
   const ids = [
     'error-modal', 'progress-modal', 'progress-bar', 'progress-text', 'progress-title',
     'result-image-display', 'result-placeholder', 'meme-canvas',
-    'download-btn', 'download-anim-btn', 'anim-fmt', 'share-btn', 'reset-all-btn',
+    'download-btn', 'add-gallery-btn', 'download-anim-btn', 'anim-fmt', 'share-btn', 'reset-all-btn',
     'step-1-subject', 'subject-img-input', 'subject-img-preview', 'subject-upload-prompt',
     'prepare-subject-btn', 'skip-to-swap-btn',
     'step-2-scene', 'bg-prompt-input', 'auto-enhance-prompt-toggle', 'generate-scene-btn', 'goto-step-3-btn',
@@ -47,7 +47,8 @@ export function assignDomElements() {
     'dynamic-prompts-container',
     'generate-all-btn',
     'theme-toggle', 'theme-icon',
-    'sidebar', 'sidebar-toggle', 'gallery-toggle', 'gallery-container'
+    'sidebar', 'sidebar-toggle', 'gallery-toggle', 'gallery-container',
+    'gallery-modal', 'gallery-modal-img'
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);

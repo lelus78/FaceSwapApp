@@ -2,6 +2,7 @@ import * as api from './api.js';
 import { state, dom } from './state.js';
 import { updateMemePreview, handleDownloadAnimation } from './memeEditor.js';
 import { getStickerAtPosition } from './stickers.js';
+import { addToGallery } from './gallery.js';
 
 export function displayImage(imageBlobOrFile, imageElement) {
   if (!imageBlobOrFile || !imageElement) return;
@@ -12,6 +13,7 @@ export function displayImage(imageBlobOrFile, imageElement) {
   if (imageElement.id === 'result-image-display') {
     dom.resultPlaceholder.classList.add('hidden');
     dom.downloadBtn.classList.remove('hidden');
+    dom.addGalleryBtn.classList.remove('hidden');
     dom.shareBtn.classList.remove('hidden');
   } else if (imageElement.id === 'subject-img-preview') {
     dom.subjectUploadPrompt.style.display = 'none';
@@ -51,6 +53,11 @@ export function drawFaceBoxes(boxesContainer, imageElement, faceArray, selection
 export function updateSelectionHighlights(container, selectedIndex) {
   if (!container) return;
   container.querySelectorAll('.face-box').forEach((box, i) => box.classList.toggle('selected', i === selectedIndex));
+}
+
+export function refreshFaceBoxes() {
+  drawFaceBoxes(dom.sourceFaceBoxesContainer, dom.sourceImgPreview, state.sourceFaces, 'source');
+  drawFaceBoxes(dom.targetFaceBoxesContainer, dom.resultImageDisplay, state.targetFaces, 'target');
 }
 
 export function startProgressBar(title, duration = 30) {
@@ -425,6 +432,12 @@ export function setupEventListeners() {
     link.download = 'pro-meme-result.png';
     link.click();
   });
+  dom.addGalleryBtn.addEventListener('click', () => {
+    const src = dom.memeCanvas.classList.contains('hidden') ? dom.resultImageDisplay.src : dom.memeCanvas.toDataURL('image/png');
+    const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
+    const title = `Meme #${list.length + 1}`;
+    addToGallery(title, src);
+  });
   dom.downloadAnimBtn.addEventListener('click', handleDownloadAnimation);
   const getCoords = e => {
     const rect = dom.memeCanvas.getBoundingClientRect();
@@ -463,6 +476,11 @@ export function setupEventListeners() {
   ['mousedown', 'touchstart'].forEach(evt => dom.memeCanvas.addEventListener(evt, onStart, { passive: false }));
   ['mousemove', 'touchmove'].forEach(evt => document.addEventListener(evt, onMove, { passive: false }));
   ['mouseup', 'touchend', 'touchcancel'].forEach(evt => document.addEventListener(evt, onEnd));
+  window.addEventListener('resize', refreshFaceBoxes);
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(refreshFaceBoxes);
+    [dom.resultImageDisplay, dom.sourceImgPreview].forEach(el => el && ro.observe(el));
+  }
 }
 
 export function resetWorkflow() {
@@ -487,7 +505,7 @@ export function resetWorkflow() {
   dom.resultImageDisplay.style.filter = 'none';
   dom.resultImageDisplay.classList.remove('hidden');
   dom.resultPlaceholder.classList.remove('hidden');
-  ['downloadBtn', 'downloadAnimBtn', 'animFmt', 'shareBtn'].forEach(id => dom[id]?.classList.add('hidden'));
+  ['downloadBtn', 'addGalleryBtn', 'downloadAnimBtn', 'animFmt', 'shareBtn'].forEach(id => dom[id]?.classList.add('hidden'));
   ['prepareSubjectBtn', 'skipToSwapBtn', 'gotoStep3Btn', 'swapBtn'].forEach(id => dom[id] && (dom[id].disabled = true));
   state.sourceFaces = [];
   state.targetFaces = [];
