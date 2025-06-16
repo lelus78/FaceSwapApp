@@ -5,22 +5,38 @@ import { showError } from './workflow.js';
 export function drawFaceBoxes(container, image, faces, type) {
   if (!container || !image || !image.complete || image.naturalWidth === 0) return;
   container.innerHTML = '';
-  const rect = container.getBoundingClientRect();
-  if (!rect.width) return;
-  const scaleX = rect.width / image.naturalWidth;
-  const scaleY = rect.height / image.naturalHeight;
+
+  // 1. Prendi le dimensioni del contenitore dei box
+  const containerWidth = container.offsetWidth;
+  const containerHeight = container.offsetHeight;
+
+  // 2. Prendi le dimensioni REALI dell'immagine renderizzata
+  const renderWidth = image.offsetWidth;
+  const renderHeight = image.offsetHeight;
+
+  // 3. Calcola lo spazio vuoto (offset) attorno all'immagine
+  const offsetX = (containerWidth - renderWidth) / 2;
+  const offsetY = (containerHeight - renderHeight) / 2;
+
+  // 4. Calcola la scala basandoti sulle dimensioni reali
+  const scaleX = renderWidth / image.naturalWidth;
+  const scaleY = renderHeight / image.naturalHeight;
+
   faces.forEach((face, idx) => {
     const [x1, y1, x2, y2] = face.bbox;
     const box = document.createElement('div');
     box.className = 'face-box';
-    box.style.left = `${x1 * scaleX}px`;
-    box.style.top = `${y1 * scaleY}px`;
+
+    box.style.left = `${x1 * scaleX + offsetX}px`;
+    box.style.top = `${y1 * scaleY + offsetY}px`;
     box.style.width = `${(x2 - x1) * scaleX}px`;
     box.style.height = `${(y2 - y1) * scaleY}px`;
+
     const label = document.createElement('span');
     label.className = 'face-box-label';
     label.textContent = idx + 1;
     box.appendChild(label);
+
     box.onclick = e => { e.stopPropagation(); handleFaceSelection(idx, type); };
     container.appendChild(box);
   });
@@ -32,44 +48,45 @@ export function updateSelectionHighlights(container, selectedIndex) {
 }
 
 export function refreshFaceBoxes() {
-  drawFaceBoxes(dom.sourceFaceBoxesContainer, dom.sourceImgPreview, state.sourceFaces, 'source');
-  drawFaceBoxes(dom.targetFaceBoxesContainer, dom.resultImageDisplay, state.targetFaces, 'target');
+  if (dom.sourceImgPreview && dom.sourceImgPreview.src) {
+    drawFaceBoxes(dom.sourceFaceBoxesContainer, dom.sourceImgPreview, state.sourceFaces, 'source');
+  }
+  if (dom.resultImageDisplay && dom.resultImageDisplay.src) {
+    drawFaceBoxes(dom.targetFaceBoxesContainer, dom.resultImageDisplay, state.targetFaces, 'target');
+  }
 }
 
 export async function detectAndDrawFaces(blob, image, container, faces, type) {
-  const onLoad = async () => {
-    try {
-      const data = await api.detectFaces(blob);
-      faces.splice(0, faces.length, ...data.faces);
-      drawFaceBoxes(container, image, faces, type);
-      updateSelectionHighlights(container, type==='source'?state.selectedSourceIndex:state.selectedTargetIndex);
-    } catch (err) {
-      showError('Errore Rilevamento Volti', err.message);
-      faces.length = 0;
-      drawFaceBoxes(container, image, [], type);
-    }
-  };
-  if (image.complete && image.naturalWidth > 0) onLoad();
-  else image.onload = onLoad;
+  try {
+    const data = await api.detectFaces(blob);
+    faces.splice(0, faces.length, ...data.faces);
+    drawFaceBoxes(container, image, faces, type);
+    updateSelectionHighlights(container, type==='source' ? state.selectedSourceIndex : state.selectedTargetIndex);
+  } catch (err) {
+    showError('Errore Rilevamento Volti', err.message);
+    faces.length = 0;
+    drawFaceBoxes(container, image, [], type);
+  }
 }
 
 function handleFaceSelection(index, type) {
   if (type === 'source') {
-    state.selectedSourceIndex = index;
+    state.selectedSourceIndex = index === state.selectedSourceIndex ? -1 : index;
   } else {
-    state.selectedTargetIndex = index;
+    state.selectedTargetIndex = index === state.selectedTargetIndex ? -1 : index;
   }
-  updateSelectionHighlights(type==='source'?dom.sourceFaceBoxesContainer:dom.targetFaceBoxesContainer, index);
-  dom.selectionStatus.classList.remove('hidden');
-  dom.selectedSourceId.textContent = state.selectedSourceIndex + 1 || 'Nessuno';
-  dom.selectedTargetId.textContent = state.selectedTargetIndex + 1 || 'Nessuno';
+  updateSelectionHighlights(type==='source' ? dom.sourceFaceBoxesContainer : dom.targetFaceBoxesContainer, index);
+  dom.selectedSourceId.textContent = state.selectedSourceIndex > -1 ? state.selectedSourceIndex + 1 : 'Nessuno';
+  dom.selectedTargetId.textContent = state.selectedTargetIndex > -1 ? state.selectedTargetIndex + 1 : 'Nessuno';
   dom.swapBtn.disabled = state.selectedSourceIndex < 0 || state.selectedTargetIndex < 0;
 }
 
 export function initFaceBoxObservers() {
   if (window.ResizeObserver) {
     const ro = new ResizeObserver(refreshFaceBoxes);
-    [dom.resultImageDisplay, dom.sourceImgPreview].forEach(el => el && ro.observe(el));
+    [dom.resultImageDisplay, dom.sourceImgPreview].forEach(el => {
+      if(el) ro.observe(el);
+    });
   }
   window.addEventListener('resize', refreshFaceBoxes);
 }

@@ -1,17 +1,24 @@
+// Contenuto completo e corretto per app/static/js/workflow.js
+
 import * as api from './api.js';
 import { state, dom } from './state.js';
 import { updateMemePreview, handleDownloadAnimation } from './memeEditor.js';
 import { getStickerAtPosition } from './stickers.js';
 import { addToGallery } from './gallery.js';
-
 import { drawFaceBoxes, updateSelectionHighlights, refreshFaceBoxes, detectAndDrawFaces } from "./facebox.js";
-export function displayImage(src, imageElement) {
+
+export function displayImage(src, imageElement, onLoadCallback = null) {
   if (!src || !imageElement) return;
   const oldUrl = imageElement.dataset.blobUrl;
   if (oldUrl) { URL.revokeObjectURL(oldUrl); imageElement.dataset.blobUrl = ''; }
 
   const finalize = url => {
-    imageElement.onload = refreshFaceBoxes;
+    imageElement.onload = () => {
+      refreshFaceBoxes();
+      if (onLoadCallback) {
+        onLoadCallback();
+      }
+    };
     imageElement.src = url;
     imageElement.classList.remove('hidden');
     if (imageElement.id === 'result-image-display') {
@@ -38,7 +45,6 @@ export function displayImage(src, imageElement) {
     finalize(src);
   }
 }
-
 
 export function startProgressBar(title, duration = 30) {
   dom.progressTitle.textContent = title;
@@ -76,14 +82,15 @@ export function goToStep(stepNumber) {
   state.currentStep = stepNumber;
   document.querySelectorAll('.wizard-step').forEach(step => step.classList.add('hidden'));
   const stepId = `step-${stepNumber}-${['subject', 'scene', 'upscale', 'finalize'][stepNumber - 1]}`;
-  const stepEl = document.getElementById(stepId);
-  if (stepEl) stepEl.classList.remove('hidden');
-  setTimeout(refreshFaceBoxes, 50);
+  document.getElementById(stepId)?.classList.remove('hidden');
 }
 export function handleSubjectFile(file) {
   if (!file?.type.startsWith('image/')) return;
   state.subjectFile = file;
-  displayImage(file, dom.imagePreview);
+  displayImage(file, dom.imagePreview, () => {
+      // Questa callback viene eseguita solo quando l'immagine è pronta
+      detectAndDrawFaces(file, dom.imagePreview, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+  });
   dom.prepareSubjectBtn.disabled = false;
   dom.skipToSwapBtn.disabled = false;
 }
@@ -91,8 +98,9 @@ export function handleSubjectFile(file) {
 export function handleSourceFile(file) {
   if (!file?.type.startsWith('image/')) return;
   state.sourceImageFile = file;
-  displayImage(file, dom.sourceImgPreview);
-  detectAndDrawFaces(file, dom.sourceImgPreview, dom.sourceFaceBoxesContainer, state.sourceFaces, 'source');
+  displayImage(file, dom.sourceImgPreview, () => {
+    detectAndDrawFaces(file, dom.sourceImgPreview, dom.sourceFaceBoxesContainer, state.sourceFaces, 'source');
+  });
   dom.selectionStatus.classList.remove('hidden');
 }
 
@@ -100,8 +108,9 @@ export function handleSkipToSwap() {
   if (!state.subjectFile) return showError('File Mancante', "Carica un'immagine prima.");
   state.upscaledImageBlob = state.subjectFile;
   state.processedSubjectBlob = state.sceneImageBlob = state.finalImageWithSwap = null;
-  displayImage(state.upscaledImageBlob, dom.resultImageDisplay);
-  detectAndDrawFaces(state.upscaledImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+  displayImage(state.upscaledImageBlob, dom.resultImageDisplay, () => {
+    detectAndDrawFaces(state.upscaledImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+  });
   goToStep(4);
 }
 
@@ -110,8 +119,9 @@ export async function handlePrepareSubject() {
   startProgressBar('Step 1: Preparazione Soggetto...', 15);
   try {
     state.processedSubjectBlob = await api.prepareSubject(state.subjectFile);
-    displayImage(state.processedSubjectBlob, dom.resultImageDisplay);
-    detectAndDrawFaces(state.processedSubjectBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    displayImage(state.processedSubjectBlob, dom.resultImageDisplay, () => {
+        detectAndDrawFaces(state.processedSubjectBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    });
     goToStep(2);
   } catch (err) {
     showError('Errore Preparazione', err.message);
@@ -132,10 +142,12 @@ export async function handleCreateScene() {
     }
     state.sceneImageBlob = await api.createScene(state.processedSubjectBlob, prompt);
     state.finalImageWithSwap = null;
-    displayImage(state.sceneImageBlob, dom.resultImageDisplay);
-    detectAndDrawFaces(state.sceneImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    displayImage(state.sceneImageBlob, dom.resultImageDisplay, () => {
+        detectAndDrawFaces(state.sceneImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    });
     dom.gotoStep3Btn.disabled = false;
-  } catch (err) {
+  } catch (err)
+ {
     showError('Errore Creazione Scena', err.message);
   } finally {
     finishProgressBar();
@@ -148,8 +160,9 @@ export async function handleUpscaleAndDetail() {
   try {
     state.upscaledImageBlob = await api.upscaleAndDetail(state.sceneImageBlob, dom.enableHiresUpscaleToggle.checked, dom.tileDenoisingSlider.value);
     state.finalImageWithSwap = null;
-    displayImage(state.upscaledImageBlob, dom.resultImageDisplay);
-    detectAndDrawFaces(state.upscaledImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    displayImage(state.upscaledImageBlob, dom.resultImageDisplay, () => {
+        detectAndDrawFaces(state.upscaledImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    });
     goToStep(4);
   } catch (err) {
     showError('Errore Upscale', err.message);
@@ -164,8 +177,9 @@ export async function handlePerformSwap() {
   startProgressBar('Step 4: Face Swap...', 10);
   try {
     state.finalImageWithSwap = await api.performSwap(targetImg, state.sourceImageFile, state.selectedSourceIndex, state.selectedTargetIndex);
-    displayImage(state.finalImageWithSwap, dom.resultImageDisplay);
-    detectAndDrawFaces(state.finalImageWithSwap, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    displayImage(state.finalImageWithSwap, dom.resultImageDisplay, () => {
+        detectAndDrawFaces(state.finalImageWithSwap, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+    });
     state.selectedTargetIndex = -1;
     dom.selectedTargetId.textContent = 'Nessuno';
     dom.swapBtn.disabled = true;
