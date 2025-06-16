@@ -230,7 +230,11 @@ def create_app():
 
     @app.route('/explore')
     def explore():
-        return render_template('explore.html')
+        return render_template('esplora.html')
+
+    @app.route('/gallery')
+    def gallery_page():
+        return render_template('galleria.html')
 
     @app.route('/api/stickers')
     def get_stickers_api():
@@ -259,6 +263,21 @@ def create_app():
                     'url': url_for('static', filename=f'gallery/{fname}')
                 })
         return jsonify(items)
+
+    @app.route('/api/memes')
+    def api_memes():
+        return get_approved_memes()
+
+    @app.route('/api/meme', methods=['POST'])
+    def api_add_meme():
+        if 'image' not in request.files:
+            return jsonify({'error': 'Immagine mancante'}), 400
+        file = request.files['image']
+        fname = uuid.uuid4().hex + os.path.splitext(file.filename)[1]
+        save_path = os.path.join(app.static_folder, 'gallery', fname)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        file.save(save_path)
+        return jsonify({'url': url_for('static', filename=f'gallery/{fname}')})
 
     @app.route('/lottie_json/<path:sticker_path>')
     def get_lottie_json(sticker_path):

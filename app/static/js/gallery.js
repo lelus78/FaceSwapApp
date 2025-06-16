@@ -93,3 +93,86 @@ export function addToGallery(title, dataUrl) {
   const container = document.getElementById('gallery-container');
   if (container) renderGallery(container, list);
 }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  if (!t) return; 
+  t.textContent = msg; t.classList.remove('hidden');
+  setTimeout(()=>t.classList.add('hidden'), 2000);
+}
+
+async function embedCaption(imgUrl, text) {
+  if (!text) return imgUrl;
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img,0,0);
+      const size = Math.max(24, c.width * 0.05);
+      ctx.font = `bold ${size}px Impact`;
+      ctx.fillStyle = 'white';
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = size/10;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.strokeText(text, c.width/2, c.height - 10);
+      ctx.fillText(text, c.width/2, c.height -10);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.crossOrigin='anonymous';
+    img.src = imgUrl;
+  });
+}
+
+export async function loadExplore(container) {
+  const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
+  let server = [];
+  try { const r = await fetch(`${window.location.origin}/api/approved_memes`); server = await r.json(); } catch {}
+  const items = [...local, ...server].sort((a,b)=> (b.ts||0)-(a.ts||0));
+  let index=0; const batch=12; let filtered=items;
+  function renderSlice(reset=false){
+    if(reset){container.innerHTML=''; index=0;}
+    const slice=filtered.slice(index,index+batch); index+=slice.length;
+    slice.forEach(m=>{
+      const card=document.createElement('div');
+      card.className='relative group gallery-item';
+      const img=document.createElement('img');
+      img.src=m.url; img.alt=m.title||''; img.className='w-full h-full object-cover rounded cursor-pointer';
+      const overlay=document.createElement('div');
+      overlay.className='gallery-item-overlay';
+      const p=document.createElement('p'); p.className='text-xs text-white truncate'; p.textContent=m.title||'';
+      overlay.appendChild(p); card.appendChild(img); card.appendChild(overlay); container.appendChild(card);
+    });
+  }
+  function fetchMore(){ if(index<filtered.length) renderSlice(); }
+  function applyFilter(term, forceReload=false){
+    filtered=items.filter(m=> (m.title||'').toLowerCase().includes(term));
+    if(forceReload){index=0;}
+    renderSlice(true);
+    if(index<filtered.length){/* keep going for first batch*/}
+  }
+  renderSlice();
+  container.addEventListener('click',e=>{
+    const img=e.target.closest('.gallery-item img');
+    if(img){
+      const modal=document.getElementById('gallery-modal');
+      const modalImg=document.getElementById('gallery-modal-img');
+      if(modal&&modalImg){modalImg.src=img.src; modal.style.display='flex';}
+    }
+  });
+  return {fetchMore, applyFilter};
+}
+
+export async function addToGallery(title, dataUrl, caption='') {
+  const withText = await embedCaption(dataUrl, caption);
+  const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
+  list.push({ title, url: withText, caption, local: true, ts: Date.now() });
+  localStorage.setItem('userGallery', JSON.stringify(list));
+  const container = document.getElementById('gallery-container');
+  if (container) renderGallery(container, list);
+  window.dispatchEvent(new Event('gallery-updated'));
+  showToast('Salvato nella galleria');
+}
+
