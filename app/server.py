@@ -39,6 +39,7 @@ from werkzeug.utils import safe_join
 from flask_cors import CORS
 from flask_wtf import CSRFProtect
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
+
 from app.auth import auth_bp
 from .forms import SearchForm
 from dotenv import load_dotenv
@@ -296,6 +297,7 @@ def create_app():
     load_dotenv()
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
+
     csrf = CSRFProtect(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
     app.register_blueprint(meme_bp)
@@ -311,6 +313,7 @@ def create_app():
         return render_template("esplora.html", form=form)
 
     @app.route("/gallery")
+    @login_required
     def gallery_page():
         form = SearchForm()
         return render_template("galleria.html", form=form)
@@ -389,6 +392,7 @@ def create_app():
         return get_approved_memes()
 
     @app.route("/api/meme", methods=["POST"])
+    @login_required
     def api_add_meme():
         if "image" not in request.files:
             return jsonify({"error": "Immagine mancante"}), 400
