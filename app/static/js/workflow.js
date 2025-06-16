@@ -423,7 +423,7 @@ export function setupEventListeners() {
   dom.addGalleryBtn.addEventListener('click', () => {
     updateMemePreview();
     const src = dom.memeCanvas.toDataURL('image/png');
-
+    
     const data = JSON.parse(localStorage.getItem('galleryData') || '{}');
     const user = localStorage.getItem('username') || 'user';
     let count = 0;

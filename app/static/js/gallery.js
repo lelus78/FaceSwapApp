@@ -1,4 +1,3 @@
-
 const GALLERY_KEY = 'galleryData';
 const USERNAME = localStorage.getItem('username') || 'user';
 
@@ -128,6 +127,7 @@ function renderGallery(container, items) {
 }
 
 export function setupGalleryInteraction(container) {
+
     if (!container) return;
     container.addEventListener('click', e => {
         const copy = e.target.closest('.copy-link');
@@ -224,6 +224,7 @@ async function embedCaption(imgUrl, text) {
 
 
 export async function loadExplore(container) {
+
     // Logica di 'ip-adapter' per caricare solo gli elementi condivisi
     const data = getGalleryData();
     const local = [];
@@ -234,6 +235,7 @@ export async function loadExplore(container) {
             });
         });
     });
+
 
 
     let server = [];

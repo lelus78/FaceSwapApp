@@ -10,7 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body class="antialiased bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-300">
+<body class="antialiased bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-300" data-user="{{ username|default('') }}">
 <div class="flex min-h-screen">
     <aside id="sidebar" class="hidden md:flex flex-col w-56 bg-gray-800 text-gray-200 p-4 space-y-4 border-r border-gray-700 sticky top-0 h-screen overflow-y-auto">
         <nav class="flex flex-col gap-3 text-sm">
@@ -41,6 +41,7 @@ import { initSidebarToggle, loadGallery, setupGalleryInteraction } from '{{ url_
 document.addEventListener('DOMContentLoaded', () => {
   const sidebar = document.getElementById('sidebar');
   const sidebarToggle = document.getElementById('sidebar-toggle');
+  window.currentUser = document.body.dataset.user || '';
   initTheme('theme-toggle','theme-icon');
   initSidebarToggle(sidebar, sidebarToggle);
 });
