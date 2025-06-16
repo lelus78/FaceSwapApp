@@ -10,7 +10,6 @@ let stickerStack = [];
 let selectedSticker = null;
 let isDragging = false, isResizing = false, isRotating = false;
 let dragOffsetX, dragOffsetY;
-let previewLoopId = null;
 
 // --- Funzioni di Utilità e UI ---
 
@@ -265,7 +264,7 @@ function renderDynamicPrompts(parts) {
             <div class="flex items-center gap-2">
                 <label for="prompt-${part}" class="w-1/4 text-sm text-right text-gray-400">${prettyPartName}:</label>
                 <input type="text" id="prompt-${part}" data-part-name="${part}" class="prompt-input w-3/4 bg-gray-900 border border-gray-600 rounded-lg p-2 text-sm text-gray-300" placeholder="Descrivi modifica per ${part}...">
-                <button class="enhance-part-btn btn btn-secondary text-white font-bold p-2 rounded-lg" data-part-name="${part}" title="Migliora prompt con AI">✨</button>
+                <button class="enhance-part-btn inline-flex items-center justify-center transition bg-purple-700 hover:bg-purple-800 text-white font-bold p-2 rounded-lg" data-part-name="${part}" title="Migliora prompt con AI">✨</button>
             </div>
         `;
         container.innerHTML += promptRow;
@@ -523,27 +522,14 @@ async function addStickerToCanvas(element, isVideo, isLottie, path) {
             dom.downloadAnimBtn.classList.remove('hidden');
             dom.animFmt.classList.remove('hidden');
         }
-        updateMemePreview();
     }
 }
+
 // --- Funzioni di Setup e Inizializzazione ---
 
-function startPreviewLoop() {
-    if (previewLoopId === null) {
-        const loop = () => {
-            updateMemePreview();
-            previewLoopId = requestAnimationFrame(loop);
-        };
-        previewLoopId = requestAnimationFrame(loop);
-    }
-}
-
-function stopPreviewLoop() {
-    if (previewLoopId !== null) {
-        cancelAnimationFrame(previewLoopId);
-        previewLoopId = null;
-        updateMemePreview();
-    }
+function animationLoop() {
+    updateMemePreview();
+    requestAnimationFrame(animationLoop);
 }
 
 function assignDomElements() {
@@ -675,29 +661,18 @@ function setupEventListeners() {
     });
     const stickerControls = [dom.stickerDeleteBtn, dom.stickerFrontBtn, dom.stickerBackBtn];
     stickerControls[0].addEventListener('click', () => {
-        if (selectedSticker) {
-            stickerStack = stickerStack.filter(s => s !== selectedSticker);
-            selectedSticker = null;
-            updateMemePreview();
-        }
+        if (selectedSticker) stickerStack = stickerStack.filter(s => s !== selectedSticker);
+        selectedSticker = null;
     });
     stickerControls[1].addEventListener('click', () => {
         if (!selectedSticker) return;
         const i = stickerStack.indexOf(selectedSticker);
-        if (i < stickerStack.length - 1) {
-            stickerStack.splice(i, 1);
-            stickerStack.push(selectedSticker);
-            updateMemePreview();
-        }
+        if (i < stickerStack.length - 1) { stickerStack.splice(i, 1); stickerStack.push(selectedSticker); }
     });
     stickerControls[2].addEventListener('click', () => {
         if (!selectedSticker) return;
         const i = stickerStack.indexOf(selectedSticker);
-        if (i > 0) {
-            stickerStack.splice(i, 1);
-            stickerStack.unshift(selectedSticker);
-            updateMemePreview();
-        }
+        if (i > 0) { stickerStack.splice(i, 1); stickerStack.unshift(selectedSticker); }
     });
     dom.downloadBtn.addEventListener('click', async e => {
         e.preventDefault();
@@ -726,13 +701,8 @@ function setupEventListeners() {
             selectedSticker = hit.sticker;
             if (hit.corner === 'resize') isResizing = true;
             else if (hit.corner === 'rotate') isRotating = true;
-            else {
-                isDragging = true;
-                const c = getCoords(e);
-                dragOffsetX = c.x - hit.sticker.x;
-                dragOffsetY = c.y - hit.sticker.y;
-            }
-            startPreviewLoop();
+
+            else { isDragging = true; const c = getCoords(e); dragOffsetX = c.x - hit.sticker.x; dragOffsetY = c.y - hit.sticker.y; }
         } else {
             selectedSticker = null;
         }
@@ -745,24 +715,14 @@ function setupEventListeners() {
         const s = selectedSticker, cx = s.x + s.width / 2, cy = s.y + s.height / 2;
         if (isResizing) {
             const newW = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(y - cy, 2)) * Math.sqrt(2);
-            if (newW > 20) {
-                s.x += (s.width - newW) / 2;
-                s.y += (s.height - newW * s.aspectRatio) / 2;
-                s.width = newW;
-                s.height = newW * s.aspectRatio;
-            }
+            if (newW > 20) { s.x += (s.width - newW) / 2; s.y += (s.height - newW * s.aspectRatio) / 2; s.width = newW; s.height = newW * s.aspectRatio; }
         } else if (isRotating) {
             s.rotation = Math.atan2(y - cy, x - cx) + Math.PI / 2;
         } else if (isDragging) {
-            s.x = x - dragOffsetX;
-            s.y = y - dragOffsetY;
+            s.x = x - dragOffsetX; s.y = y - dragOffsetY;
         }
-        updateMemePreview();
     };
-    const onEnd = () => {
-        isDragging = isResizing = isRotating = false;
-        stopPreviewLoop();
-    };
+    const onEnd = () => { isDragging = isResizing = isRotating = false; };
     ['mousedown', 'touchstart'].forEach(evt => dom.memeCanvas.addEventListener(evt, onStart, { passive: false }));
     ['mousemove', 'touchmove'].forEach(evt => document.addEventListener(evt, onMove, { passive: false }));
     ['mouseup', 'touchend', 'touchcancel'].forEach(evt => document.addEventListener(evt, onEnd));
@@ -881,4 +841,5 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     loadStickers();
     resetWorkflow();
+    animationLoop();
 });
