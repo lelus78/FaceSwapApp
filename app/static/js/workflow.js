@@ -5,11 +5,19 @@ import { getStickerAtPosition } from './stickers.js';
 import { addToGallery } from './gallery.js';
 
 import { drawFaceBoxes, updateSelectionHighlights, refreshFaceBoxes, detectAndDrawFaces } from "./facebox.js";
-export function displayImage(imageBlobOrFile, imageElement) {
-  if (!imageBlobOrFile || !imageElement) return;
-  const oldUrl = imageElement.src;
-  if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
-  imageElement.src = URL.createObjectURL(imageBlobOrFile);
+export function displayImage(src, imageElement) {
+  if (!src || !imageElement) return;
+  const oldUrl = imageElement.dataset.blobUrl;
+  if (oldUrl) { URL.revokeObjectURL(oldUrl); imageElement.dataset.blobUrl = ''; }
+  let url = '';
+  if (src instanceof Blob || src instanceof File) {
+    url = URL.createObjectURL(src);
+    imageElement.dataset.blobUrl = url;
+  } else if (typeof src === 'string') {
+    url = src;
+  }
+  imageElement.onload = refreshFaceBoxes;
+  imageElement.src = url;
   imageElement.classList.remove('hidden');
   if (imageElement.id === 'result-image-display') {
     dom.resultPlaceholder.classList.add('hidden');

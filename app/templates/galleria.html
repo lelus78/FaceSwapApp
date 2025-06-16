@@ -1,57 +1,40 @@
-<!DOCTYPE html>
-<html lang="it">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Galleria</title>
-  <script src="https://cdn.tailwindcss.com" defer></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <style>body{font-family:'Inter',sans-serif}</style>
-</head>
-<body class="bg-gray-900 text-gray-200">
-  <header class="sticky top-0 z-10 flex items-center justify-between p-4 bg-gray-800 shadow">
-    <h1 class="text-xl font-semibold">Galleria</h1>
-    <div class="flex items-center gap-2">
-      <a href="{{ url_for('explore') }}" class="text-sm hover:underline">Esplora</a>
-      <a href="{{ url_for('home') }}" class="text-sm hover:underline">Crea</a>
-      <button id="theme-toggle" aria-label="Toggle theme" class="p-2 rounded-md hover:bg-gray-700"><svg id="theme-icon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg></button>
-    </div>
-  </header>
-  <main class="p-4">
-    <input type="search" id="gallery-search" placeholder="Cerca" class="w-full mb-4 p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Cerca nella galleria">
-    <div id="user-gallery" class="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"></div>
-  </main>
-  <div id="gallery-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-modal-img">
-    <div class="flex items-center justify-center min-h-screen px-4">
-      <div class="modal-content bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-2xl max-w-3xl mx-auto">
-        <img id="gallery-modal-img" src="" alt="Anteprima" class="max-h-[80vh] mx-auto rounded-lg" />
-        <div class="mt-4 flex justify-end gap-2">
-          <a id="gallery-download" href="#" download="meme.png" class="btn btn-primary">Download</a>
-          <button type="button" onclick="closeModal('gallery-modal')" class="btn bg-gray-700">Chiudi</button>
-        </div>
+{% extends 'layout.html' %}
+{% block title %}Galleria{% endblock %}
+{% block header_title %}Galleria{% endblock %}
+{% block content %}
+<div class="p-4">
+  <input type="search" id="gallery-search" placeholder="Cerca" class="w-full mb-4 p-2 rounded-md bg-gray-800 border border-gray-700" aria-label="Cerca nella galleria">
+  <div id="user-gallery" class="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"></div>
+</div>
+<div id="gallery-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-modal-img">
+  <div class="flex items-center justify-center min-h-screen px-4">
+    <div class="modal-content bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-2xl max-w-3xl mx-auto">
+      <img id="gallery-modal-img" src="" alt="Anteprima" class="max-h-[80vh] mx-auto rounded-lg" />
+      <div class="mt-4 flex justify-end gap-2">
+        <a id="gallery-download" href="#" download="meme.png" class="btn btn-primary">Download</a>
+        <button type="button" onclick="closeModal('gallery-modal')" class="btn bg-gray-700">Chiudi</button>
       </div>
     </div>
   </div>
-  <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-3 py-2 rounded shadow hidden"></div>
-  <script type="module">
-    import { initTheme } from '{{ url_for('static', filename='js/theme.js') }}';
-    import { loadGallery, setupGalleryInteraction } from '{{ url_for('static', filename='js/gallery.js') }}';
-    import { closeModal } from '{{ url_for('static', filename='js/workflow.js') }}';
-    const container = document.getElementById('user-gallery');
-    const searchInput = document.getElementById('gallery-search');
-    function render() { loadGallery(container).then(()=>setupGalleryInteraction(container)); }
-    render();
-    window.addEventListener('gallery-updated', render);
-    searchInput.addEventListener('input', e=>{
-      const t = e.target.value.toLowerCase();
-      container.querySelectorAll('.gallery-item').forEach(card=>{
-        const txt = card.querySelector('p')?.textContent.toLowerCase() || '';
-        card.style.display = txt.includes(t) ? '' : 'none';
-      });
+</div>
+<div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-3 py-2 rounded shadow hidden"></div>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+  import { loadGallery, setupGalleryInteraction } from '{{ url_for('static', filename='js/gallery.js') }}';
+  import { closeModal } from '{{ url_for('static', filename='js/workflow.js') }}';
+  const container = document.getElementById('user-gallery');
+  const searchInput = document.getElementById('gallery-search');
+  function render(){ loadGallery(container).then(()=>setupGalleryInteraction(container)); }
+  render();
+  window.addEventListener('gallery-updated', render);
+  searchInput.addEventListener('input', e=>{
+    const t = e.target.value.toLowerCase();
+    container.querySelectorAll('.gallery-item').forEach(card=>{
+      const txt = card.querySelector('p')?.textContent.toLowerCase() || '';
+      card.style.display = txt.includes(t) ? '' : 'none';
     });
-    initTheme('theme-toggle','theme-icon');
-    window.closeModal = closeModal;
-  </script>
-</body>
-</html>
+  });
+  window.closeModal = closeModal;
+</script>
+{% endblock %}
