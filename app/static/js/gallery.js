@@ -86,14 +86,6 @@ export function initSidebarToggle(sidebar, toggleBtn, galleryToggle, galleryCont
   }
 }
 
-export function addToGallery(title, dataUrl) {
-  const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
-  list.push({ title, url: dataUrl, local: true });
-  localStorage.setItem('userGallery', JSON.stringify(list));
-  const container = document.getElementById('gallery-container');
-  if (container) renderGallery(container, list);
-}
-
 function showToast(msg) {
   const t = document.getElementById('toast');
   if (!t) return; 
