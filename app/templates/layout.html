@@ -16,9 +16,7 @@
             <a href="{{ url_for('explore') }}" class="hover:text-white">Esplora</a>
             <a href="{{ url_for('home') }}" class="hover:text-white">Crea</a>
             <a href="{{ url_for('gallery_page') }}" class="hover:text-white">Galleria</a>
-            <button id="gallery-toggle" class="text-left hover:text-white">Galleria Local</button>
         </nav>
-        <div id="gallery-container" class="gallery-grid hidden mt-4 overflow-y-auto"></div>
     </aside>
     <div class="flex flex-col flex-1 min-h-screen">
         <header class="relative text-center py-6 bg-gray-200 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
@@ -42,11 +40,8 @@ import { initSidebarToggle, loadGallery, setupGalleryInteraction } from '{{ url_
 document.addEventListener('DOMContentLoaded', () => {
   const sidebar = document.getElementById('sidebar');
   const sidebarToggle = document.getElementById('sidebar-toggle');
-  const galleryToggle = document.getElementById('gallery-toggle');
-  const galleryContainer = document.getElementById('gallery-container');
   initTheme('theme-toggle','theme-icon');
-  initSidebarToggle(sidebar, sidebarToggle, galleryToggle, galleryContainer);
-  if (galleryContainer) loadGallery(galleryContainer).then(()=>setupGalleryInteraction(galleryContainer));
+  initSidebarToggle(sidebar, sidebarToggle);
 });
 </script>
 {% block scripts %}{% endblock %}

@@ -10,10 +10,12 @@ document.addEventListener('DOMContentLoaded', () => {
   assignDomElements();
   initFaceBoxObservers();
   initTheme(dom.themeToggle, dom.themeIcon);
-  initSidebarToggle(dom.sidebar, dom.sidebarToggle, dom.galleryToggle, dom.galleryContainer);
+  initSidebarToggle(dom.sidebar, dom.sidebarToggle);
   setupEventListeners();
   loadStickers();
-  loadGallery(dom.galleryContainer).then(() => setupGalleryInteraction(dom.galleryContainer));
+  if (dom.galleryContainer) {
+    loadGallery(dom.galleryContainer).then(() => setupGalleryInteraction(dom.galleryContainer));
+  }
   resetWorkflow();
   animationLoop();
   window.closeModal = closeModal;
