@@ -19,7 +19,7 @@ export function displayImage(src, imageElement) {
       dom.downloadBtn.classList.remove('hidden');
       dom.addGalleryBtn.classList.remove('hidden');
       dom.shareBtn.classList.remove('hidden');
-    } else if (imageElement.id === 'subject-img-preview') {
+    } else if (imageElement.id === 'imagePreview') {
       dom.subjectUploadPrompt.style.display = 'none';
     } else if (imageElement.id === 'source-img-preview') {
       dom.sourceUploadPrompt.style.opacity = '0';
@@ -81,7 +81,7 @@ export function goToStep(stepNumber) {
 export function handleSubjectFile(file) {
   if (!file?.type.startsWith('image/')) return;
   state.subjectFile = file;
-  displayImage(file, dom.subjectImgPreview);
+  displayImage(file, dom.imagePreview);
   dom.prepareSubjectBtn.disabled = false;
   dom.skipToSwapBtn.disabled = false;
 }
@@ -274,7 +274,7 @@ export function setupEventListeners() {
     }
   });
   dom.resetAllBtn.addEventListener('click', resetWorkflow);
-  dom.subjectImgInput.addEventListener('change', e => handleSubjectFile(e.target.files[0]));
+  dom.fileInput.addEventListener('change', e => handleSubjectFile(e.target.files[0]));
   dom.prepareSubjectBtn.addEventListener('click', handlePrepareSubject);
   dom.skipToSwapBtn.addEventListener('click', handleSkipToSwap);
   dom.generateSceneBtn.addEventListener('click', handleCreateScene);
@@ -437,13 +437,13 @@ export function resetWorkflow() {
   state.currentStep = 1;
   state.subjectFile = state.processedSubjectBlob = state.sceneImageBlob = state.upscaledImageBlob = state.finalImageWithSwap = null;
   state.activeFilter = 'none';
-  dom.subjectImgPreview.src = '';
-  dom.subjectImgPreview.classList.add('hidden');
+  dom.imagePreview.src = '';
+  dom.imagePreview.classList.add('hidden');
   dom.subjectUploadPrompt.style.display = 'block';
   dom.sourceImgPreview.src = '';
   dom.sourceImgPreview.classList.add('hidden');
   dom.sourceUploadPrompt.style.opacity = '1';
-  ['subjectImgInput', 'sourceImgInput', 'bgPromptInput', 'captionTextInput'].forEach(id => dom[id] && (dom[id].value = ''));
+  ['fileInput', 'sourceImgInput', 'bgPromptInput', 'captionTextInput'].forEach(id => dom[id] && (dom[id].value = ''));
   dom.tileDenoisingSlider.value = '0.4';
   dom.tileDenoisingValue.textContent = '0.40';
   dom.memeCanvas.getContext('2d').clearRect(0, 0, dom.memeCanvas.width, dom.memeCanvas.height);
@@ -467,8 +467,8 @@ export function resetWorkflow() {
   dom.toggleFaceBoxes.checked = true;
   if (dom.sourceFaceBoxesContainer) dom.sourceFaceBoxesContainer.innerHTML = '';
   if (dom.targetFaceBoxesContainer) dom.targetFaceBoxesContainer.innerHTML = '';
-  dom.subjectImgPreview.src = '';
-  dom.subjectImgPreview.classList.add('hidden');
+  dom.imagePreview.src = '';
+  dom.imagePreview.classList.add('hidden');
   dom.targetFaceBoxesContainer.style.display = 'block';
   dom.sourceFaceBoxesContainer.style.display = 'block';
   dom.filterButtonsContainer.querySelector('.active')?.classList.remove('active');
