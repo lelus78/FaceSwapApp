@@ -156,6 +156,18 @@
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
 }
 
+/* === Toggle Switch === */
+.toggle-bg {
+    position: relative;
+    transition: background-color 0.2s;
+}
+.toggle-checkbox:checked + .toggle-bg {
+    background-color: var(--accent);
+}
+.toggle-checkbox:checked + .toggle-bg .toggle-dot {
+    transform: translateX(1.25rem);
+}
+
 
 
 /* === NUOVI STILI PER LA SELEZIONE DEI VOLTI === */
