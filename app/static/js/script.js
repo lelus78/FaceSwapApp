@@ -1,4 +1,5 @@
 import * as api from './api.js';
+import { initTheme } from './theme.js';
 
 let currentStep = 1;
 let subjectFile = null, processedSubjectBlob = null, sceneImageBlob = null, upscaledImageBlob = null, finalImageWithSwap = null;
@@ -565,7 +566,6 @@ function assignDomElements() {
 }
 
 function setupEventListeners() {
-    dom.themeToggle.addEventListener('click', toggleTheme);
     dom.resetAllBtn.addEventListener('click', resetWorkflow);
     dom.subjectImgInput.addEventListener('change', (e) => handleSubjectFile(e.target.files[0]));
     dom.prepareSubjectBtn.addEventListener('click', handlePrepareSubject);
@@ -834,30 +834,10 @@ function distance(x1, y1, x2, y2) {
     return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
 }
 
-function updateThemeIcon() {
-    const dark = document.documentElement.classList.contains('dark');
-    dom.themeIcon.innerHTML = dark
-        ? '<path d="M21.752 15.002A9.718 9.718 0 0112.75 22 9.75 9.75 0 013 12.25c0-3.902 2.338-7.25 5.748-8.748a.75.75 0 01.912 1.1 7.5 7.5 0 009.038 9.038.75.75 0 01.054 1.362z"/>'
-        : '<path d="M12 2.25a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM12 18a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM20.25 11.25a.75.75 0 010 1.5h-1.5a.75.75 0 010-1.5h1.5zM5.25 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h1.5A.75.75 0 015.25 12zM17.722 6.278a.75.75 0 011.06 0l1.06 1.06a.75.75 0 11-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zM6.218 17.782a.75.75 0 010 1.06l-1.06 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zM6.218 6.218a.75.75 0 00-1.06 0l-1.06 1.06a.75.75 0 101.06 1.06l1.06-1.06a.75.75 0 000-1.06zM17.782 17.782a.75.75 0 000 1.06l1.06 1.06a.75.75 0 101.06-1.06l-1.06-1.06a.75.75 0 00-1.06 0zM12 8.25a3.75 3.75 0 100 7.5 3.75 3.75 0 000-7.5z"/>';
-}
-
-function applySavedTheme() {
-    const saved = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const useDark = saved ? saved === 'dark' : prefersDark;
-    document.documentElement.classList.toggle('dark', useDark);
-    updateThemeIcon();
-}
-
-function toggleTheme() {
-    document.documentElement.classList.toggle('dark');
-    localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
-    updateThemeIcon();
-}
 
 document.addEventListener('DOMContentLoaded', () => {
     assignDomElements();
-    applySavedTheme();
+    initTheme(dom.themeToggle, dom.themeIcon);
     setupEventListeners();
     loadStickers();
     resetWorkflow();
