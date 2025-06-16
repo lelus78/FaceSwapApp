@@ -76,6 +76,7 @@ export async function loadGallery(container) {
 
 function renderGallery(container, items) {
 
+
     if (!container) return;
     container.innerHTML = '';
     items.forEach(m => {
@@ -224,6 +225,7 @@ async function embedCaption(imgUrl, text) {
 
 
 export async function loadExplore(container) {
+
 
     // Logica di 'ip-adapter' per caricare solo gli elementi condivisi
     const data = getGalleryData();
