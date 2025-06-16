@@ -149,6 +149,18 @@ def test_generate_with_mask_missing_files(client):
     res = client.post('/generate_with_mask', data={})
     assert res.status_code == 400
 
+
+def test_save_result_video(client):
+    res = client.post('/save_result_video', data=b'test', content_type='application/octet-stream')
+    assert res.status_code == 200
+    assert res.is_json
+    assert 'url' in res.get_json()
+
+
+def test_save_result_video_missing_data(client):
+    res = client.post('/save_result_video')
+    assert res.status_code == 400
+
 def test_blueprint_endpoint(client):
     res = client.post('/meme/generate_caption', json={})
     assert res.status_code == 400

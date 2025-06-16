@@ -1,5 +1,5 @@
 import sys
-from flask import request
+from flask import request, jsonify
 
 # Provide minimal Pillow stubs when running under test stubs
 pil_image_mod = sys.modules.get('PIL.Image')
@@ -26,6 +26,15 @@ def generate_with_mask():
     if not request.files:
         return '', 400
     return '', 200
+
+
+@app.route('/save_result_video', methods=['POST'])
+def save_result_video_route():
+    if not request.get_data():
+        return '', 400
+    return jsonify(url='dummy'), 200
+
+app.view_functions['save_result_video'] = save_result_video_route
 
 
 
