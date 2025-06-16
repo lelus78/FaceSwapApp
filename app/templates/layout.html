@@ -48,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const sidebar = document.getElementById('sidebar');
   const sidebarToggle = document.getElementById('sidebar-toggle');
   window.currentUser = document.body.dataset.user || '';
+  if (window.currentUser) {
+    localStorage.setItem('username', window.currentUser);
+  }
   initTheme('theme-toggle','theme-icon');
   initSidebarToggle(sidebar, sidebarToggle);
 });
