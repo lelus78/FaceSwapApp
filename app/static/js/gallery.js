@@ -1,4 +1,10 @@
-export async function loadGallery(container) {
+export async function loadGallery(container, filters = {}) {
+  const items = await fetchGalleryItems();
+  renderGallery(container, applyFilters(items, filters));
+  return items;
+}
+
+async function fetchGalleryItems() {
   const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
   let serverItems = [];
   try {
@@ -7,7 +13,32 @@ export async function loadGallery(container) {
   } catch (err) {
     console.error('Errore caricamento galleria', err);
   }
-  renderGallery(container, [...local, ...serverItems]);
+  return [...local.map(m=>({ ...m, local: true })), ...serverItems.map(m=>({ ...m, local: false }))];
+}
+
+function extractTags(item) {
+  if (Array.isArray(item.tags)) return item.tags.map(t=>t.toLowerCase());
+  const txt = item.caption || '';
+  return (txt.match(/#(\w+)/g) || []).map(t=>t.slice(1).toLowerCase());
+}
+
+function applyFilters(items, opts = {}) {
+  const { search = '', tags = [], start = null, end = null, local = true, shared = true } = opts;
+  const tagList = tags.map(t=>t.toLowerCase());
+  return items.filter(it => {
+    if (!local && it.local) return false;
+    if (!shared && !it.local) return false;
+    const title = (it.title || '').toLowerCase();
+    if (search && !title.includes(search)) return false;
+    const ts = it.ts || 0;
+    if (start && ts < start) return false;
+    if (end && ts > end) return false;
+    if (tagList.length) {
+      const itemTags = extractTags(it);
+      if (!tagList.every(t => itemTags.includes(t))) return false;
+    }
+    return true;
+  });
 }
 
 function renderGallery(container, items) {
@@ -122,12 +153,9 @@ async function embedCaption(imgUrl, text) {
   });
 }
 
-export async function loadExplore(container) {
-  const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
-  let server = [];
-  try { const r = await fetch(`${window.location.origin}/api/approved_memes`); server = await r.json(); } catch {}
-  const items = [...local, ...server].sort((a,b)=> (b.ts||0)-(a.ts||0));
-  let index=0; const batch=12; let filtered=items;
+export async function loadExplore(container, filters = {}) {
+  const items = (await fetchGalleryItems()).sort((a,b)=>(b.ts||0)-(a.ts||0));
+  let index=0; const batch=12; let filtered=applyFilters(items, filters);
   function renderSlice(reset=false){
     if(reset){container.innerHTML=''; index=0;}
     const slice=filtered.slice(index,index+batch); index+=slice.length;
@@ -144,11 +172,12 @@ export async function loadExplore(container) {
     });
   }
   function fetchMore(){ if(index<filtered.length) renderSlice(); }
-  function applyFilter(term, forceReload=false){
-    filtered=items.filter(m=> (m.title||'').toLowerCase().includes(term));
-    if(forceReload){index=0;}
+  function applyFilter(opts = {}, forceReload=false){
+    if(typeof opts === 'string') opts = { search: opts };
+    filters = { ...filters, ...opts };
+    filtered = applyFilters(items, filters);
+    if(forceReload){ index=0; }
     renderSlice(true);
-    if(index<filtered.length){/* keep going for first batch*/}
   }
   renderSlice();
   container.addEventListener('click',e=>{
@@ -165,7 +194,8 @@ export async function loadExplore(container) {
 export async function addToGallery(title, dataUrl, caption='') {
   const withText = await embedCaption(dataUrl, caption);
   const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
-  list.push({ title, url: withText, caption, local: true, ts: Date.now() });
+  const tags = (caption.match(/#(\w+)/g) || []).map(t=>t.slice(1).toLowerCase());
+  list.push({ title, url: withText, caption, tags, local: true, ts: Date.now() });
   localStorage.setItem('userGallery', JSON.stringify(list));
   window.dispatchEvent(new Event('gallery-updated'));
   showToast('Salvato nella galleria');

@@ -344,10 +344,13 @@ def create_app():
         items = []
         for fname in sorted(os.listdir(gallery_dir)):
             if fname.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+                fpath = os.path.join(gallery_dir, fname)
                 items.append(
                     {
                         "title": os.path.splitext(fname)[0],
                         "url": url_for("static", filename=f"gallery/{fname}"),
+                        "ts": int(os.path.getmtime(fpath)),
+                        "tags": [],
                     }
                 )
         return jsonify(items)
