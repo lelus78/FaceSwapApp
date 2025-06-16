@@ -145,5 +145,9 @@ export async function handleDownloadAnimation() {
 
 export function animationLoop() {
   updateMemePreview();
-  requestAnimationFrame(animationLoop);
+  const active = state.isDragging || state.isResizing || state.isRotating ||
+                 state.stickerStack.some(s => s.type === 'video' || s.type === 'lottie');
+  const next = () => requestAnimationFrame(animationLoop);
+  if (active) next();
+  else setTimeout(next, 1000);
 }
