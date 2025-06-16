@@ -7,7 +7,7 @@
     --bg: #f9fafb;
     --card-bg: #ffffff;
     --text: #374151;
-    --muted: #6b7280;
+    --muted: #4b5563;
     --border: #d1d5db;
     --accent: #2563eb;
     --accent-hover: #1d4ed8;
@@ -33,7 +33,7 @@
     padding: 0.5rem 1rem;
     transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
-.btn:focus-visible {
+:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
