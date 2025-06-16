@@ -10,6 +10,7 @@ let stickerStack = [];
 let selectedSticker = null;
 let isDragging = false, isResizing = false, isRotating = false;
 let dragOffsetX, dragOffsetY;
+let previewLoopId = null;
 
 // --- Funzioni di Utilità e UI ---
 
@@ -522,14 +523,27 @@ async function addStickerToCanvas(element, isVideo, isLottie, path) {
             dom.downloadAnimBtn.classList.remove('hidden');
             dom.animFmt.classList.remove('hidden');
         }
+        updateMemePreview();
+    }
+}
+// --- Funzioni di Setup e Inizializzazione ---
+
+function startPreviewLoop() {
+    if (previewLoopId === null) {
+        const loop = () => {
+            updateMemePreview();
+            previewLoopId = requestAnimationFrame(loop);
+        };
+        previewLoopId = requestAnimationFrame(loop);
     }
 }
 
-// --- Funzioni di Setup e Inizializzazione ---
-
-function animationLoop() {
-    updateMemePreview();
-    requestAnimationFrame(animationLoop);
+function stopPreviewLoop() {
+    if (previewLoopId !== null) {
+        cancelAnimationFrame(previewLoopId);
+        previewLoopId = null;
+        updateMemePreview();
+    }
 }
 
 function assignDomElements() {
@@ -661,18 +675,29 @@ function setupEventListeners() {
     });
     const stickerControls = [dom.stickerDeleteBtn, dom.stickerFrontBtn, dom.stickerBackBtn];
     stickerControls[0].addEventListener('click', () => {
-        if (selectedSticker) stickerStack = stickerStack.filter(s => s !== selectedSticker);
-        selectedSticker = null;
+        if (selectedSticker) {
+            stickerStack = stickerStack.filter(s => s !== selectedSticker);
+            selectedSticker = null;
+            updateMemePreview();
+        }
     });
     stickerControls[1].addEventListener('click', () => {
         if (!selectedSticker) return;
         const i = stickerStack.indexOf(selectedSticker);
-        if (i < stickerStack.length - 1) { stickerStack.splice(i, 1); stickerStack.push(selectedSticker); }
+        if (i < stickerStack.length - 1) {
+            stickerStack.splice(i, 1);
+            stickerStack.push(selectedSticker);
+            updateMemePreview();
+        }
     });
     stickerControls[2].addEventListener('click', () => {
         if (!selectedSticker) return;
         const i = stickerStack.indexOf(selectedSticker);
-        if (i > 0) { stickerStack.splice(i, 1); stickerStack.unshift(selectedSticker); }
+        if (i > 0) {
+            stickerStack.splice(i, 1);
+            stickerStack.unshift(selectedSticker);
+            updateMemePreview();
+        }
     });
     dom.downloadBtn.addEventListener('click', async e => {
         e.preventDefault();
@@ -701,8 +726,13 @@ function setupEventListeners() {
             selectedSticker = hit.sticker;
             if (hit.corner === 'resize') isResizing = true;
             else if (hit.corner === 'rotate') isRotating = true;
-
-            else { isDragging = true; const c = getCoords(e); dragOffsetX = c.x - hit.sticker.x; dragOffsetY = c.y - hit.sticker.y; }
+            else {
+                isDragging = true;
+                const c = getCoords(e);
+                dragOffsetX = c.x - hit.sticker.x;
+                dragOffsetY = c.y - hit.sticker.y;
+            }
+            startPreviewLoop();
         } else {
             selectedSticker = null;
         }
@@ -715,14 +745,24 @@ function setupEventListeners() {
         const s = selectedSticker, cx = s.x + s.width / 2, cy = s.y + s.height / 2;
         if (isResizing) {
             const newW = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(y - cy, 2)) * Math.sqrt(2);
-            if (newW > 20) { s.x += (s.width - newW) / 2; s.y += (s.height - newW * s.aspectRatio) / 2; s.width = newW; s.height = newW * s.aspectRatio; }
+            if (newW > 20) {
+                s.x += (s.width - newW) / 2;
+                s.y += (s.height - newW * s.aspectRatio) / 2;
+                s.width = newW;
+                s.height = newW * s.aspectRatio;
+            }
         } else if (isRotating) {
             s.rotation = Math.atan2(y - cy, x - cx) + Math.PI / 2;
         } else if (isDragging) {
-            s.x = x - dragOffsetX; s.y = y - dragOffsetY;
+            s.x = x - dragOffsetX;
+            s.y = y - dragOffsetY;
         }
+        updateMemePreview();
     };
-    const onEnd = () => { isDragging = isResizing = isRotating = false; };
+    const onEnd = () => {
+        isDragging = isResizing = isRotating = false;
+        stopPreviewLoop();
+    };
     ['mousedown', 'touchstart'].forEach(evt => dom.memeCanvas.addEventListener(evt, onStart, { passive: false }));
     ['mousemove', 'touchmove'].forEach(evt => document.addEventListener(evt, onMove, { passive: false }));
     ['mouseup', 'touchend', 'touchcancel'].forEach(evt => document.addEventListener(evt, onEnd));
@@ -841,5 +881,4 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     loadStickers();
     resetWorkflow();
-    animationLoop();
 });
