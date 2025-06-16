@@ -28,7 +28,7 @@ export function assignDomElements() {
     'error-modal', 'progress-modal', 'progress-bar', 'progress-text', 'progress-title',
     'result-image-display', 'result-placeholder', 'meme-canvas',
     'download-btn', 'add-gallery-btn', 'download-anim-btn', 'anim-fmt', 'share-btn', 'reset-all-btn',
-    'step-1-subject', 'subject-img-input', 'subject-img-preview', 'subject-upload-prompt',
+    'step-1-subject', 'fileInput', 'imagePreview', 'subject-upload-prompt',
     'prepare-subject-btn', 'skip-to-swap-btn',
     'step-2-scene', 'bg-prompt-input', 'auto-enhance-prompt-toggle', 'generate-scene-btn', 'goto-step-3-btn',
     'step-3-upscale', 'enable-hires-upscale-toggle', 'tile-denoising-slider', 'tile-denoising-value',
