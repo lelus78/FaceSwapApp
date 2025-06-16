@@ -152,3 +152,8 @@ def test_generate_with_mask_missing_files(client):
 def test_blueprint_endpoint(client):
     res = client.post('/meme/generate_caption', json={})
     assert res.status_code == 400
+
+def test_home_page(client):
+    res = client.get('/')
+    assert res.status_code == 200
+    assert b"AI Face Swap Studio Pro" in res.data
