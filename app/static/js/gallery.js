@@ -1,5 +1,20 @@
+export function generateId() {
+  return (crypto.randomUUID && crypto.randomUUID()) ||
+    (Date.now().toString(36) + Math.random().toString(36).slice(2));
+}
+
+export function migrateGallery() {
+  const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
+  let changed = false;
+  list.forEach(item => {
+    if (!item.id) { item.id = generateId(); changed = true; }
+  });
+  if (changed) localStorage.setItem('userGallery', JSON.stringify(list));
+  return list;
+}
+
 export async function loadGallery(container) {
-  const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
+  const local = migrateGallery();
   let serverItems = [];
   try {
     const res = await fetch(`${window.location.origin}/api/approved_memes`);
@@ -16,6 +31,7 @@ function renderGallery(container, items) {
   items.forEach(m => {
     const card = document.createElement('div');
     card.className = 'relative group gallery-item';
+    if (m.id) card.dataset.id = m.id;
     const img = document.createElement('img');
     img.src = m.url;
     img.alt = m.title || 'meme';
@@ -65,9 +81,12 @@ export function setupGalleryInteraction(container) {
       const card = remove.closest('.gallery-item');
       if (card?.querySelector('img')?.dataset.local === '1') {
         const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
-        const idx = Array.from(container.children).indexOf(card);
-        list.splice(idx, 1);
-        localStorage.setItem('userGallery', JSON.stringify(list));
+        const id = card.dataset.id;
+        const idx = list.findIndex(i => i.id === id);
+        if (idx > -1) {
+          list.splice(idx, 1);
+          localStorage.setItem('userGallery', JSON.stringify(list));
+        }
       }
       card?.remove();
     } else if (img) {
@@ -123,17 +142,18 @@ async function embedCaption(imgUrl, text) {
 }
 
 export async function loadExplore(container) {
-  const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
+  const local = migrateGallery();
   let server = [];
   try { const r = await fetch(`${window.location.origin}/api/approved_memes`); server = await r.json(); } catch {}
   const items = [...local, ...server].sort((a,b)=> (b.ts||0)-(a.ts||0));
   let index=0; const batch=12; let filtered=items;
-  function renderSlice(reset=false){
+function renderSlice(reset=false){
     if(reset){container.innerHTML=''; index=0;}
     const slice=filtered.slice(index,index+batch); index+=slice.length;
     slice.forEach(m=>{
       const card=document.createElement('div');
       card.className='relative group gallery-item';
+      if(m.id) card.dataset.id=m.id;
       const img=document.createElement('img');
       img.src=m.url; img.alt=m.title||''; img.className='w-full h-full object-cover rounded cursor-pointer';
       const overlay=document.createElement('div');
@@ -164,8 +184,8 @@ export async function loadExplore(container) {
 
 export async function addToGallery(title, dataUrl, caption='') {
   const withText = await embedCaption(dataUrl, caption);
-  const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
-  list.push({ title, url: withText, caption, local: true, ts: Date.now() });
+  const list = migrateGallery();
+  list.push({ id: generateId(), title, url: withText, caption, local: true, ts: Date.now() });
   localStorage.setItem('userGallery', JSON.stringify(list));
   window.dispatchEvent(new Event('gallery-updated'));
   showToast('Salvato nella galleria');
