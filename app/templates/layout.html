@@ -17,7 +17,12 @@
         <nav class="flex flex-col gap-3 text-sm">
             <a href="{{ url_for('explore') }}" class="hover:text-white">Esplora</a>
             <a href="{{ url_for('home') }}" class="hover:text-white">Crea</a>
+            {% if session.get('user_id') %}
             <a href="{{ url_for('gallery_page') }}" class="hover:text-white">Galleria</a>
+            <a href="{{ url_for('auth.logout') }}" class="hover:text-white">Logout</a>
+            {% else %}
+            <a href="{{ url_for('auth.login') }}" class="hover:text-white">Login</a>
+            {% endif %}
         </nav>
     </aside>
     <div class="flex flex-col flex-1 min-h-screen">

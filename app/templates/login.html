@@ -1,0 +1,14 @@
+{% extends 'layout.html' %}
+{% block title %}Login{% endblock %}
+{% block header_title %}Login{% endblock %}
+{% block content %}
+<div class="max-w-sm mx-auto p-4">
+  <form method="post" class="space-y-4">
+    <input name="username" type="text" required class="w-full p-2 rounded-md bg-gray-800 border border-gray-700" placeholder="Username">
+    <input name="password" type="password" required class="w-full p-2 rounded-md bg-gray-800 border border-gray-700" placeholder="Password">
+    {% if error %}<p class="text-red-500 text-sm">{{ error }}</p>{% endif %}
+    <button type="submit" class="btn btn-primary w-full">Accedi</button>
+  </form>
+  <p class="mt-2 text-center text-sm"><a href="{{ url_for('auth.register') }}" class="text-blue-500">Registrati</a></p>
+</div>
+{% endblock %}
