@@ -18,7 +18,7 @@ function renderGallery(container, items) {
     card.className = 'relative group gallery-item';
     const img = document.createElement('img');
     img.src = m.url;
-    img.alt = m.title || 'meme';
+    img.alt = m.caption || m.title || 'meme';
     img.className = 'w-full h-full object-cover rounded cursor-pointer';
     if (m.local) img.dataset.local = '1';
     const overlay = document.createElement('div');
@@ -135,7 +135,7 @@ export async function loadExplore(container) {
       const card=document.createElement('div');
       card.className='relative group gallery-item';
       const img=document.createElement('img');
-      img.src=m.url; img.alt=m.title||''; img.className='w-full h-full object-cover rounded cursor-pointer';
+      img.src=m.url; img.alt=m.caption||m.title||''; img.className='w-full h-full object-cover rounded cursor-pointer';
       const overlay=document.createElement('div');
       overlay.className='gallery-item-overlay';
       const p=document.createElement('p'); p.className='text-xs text-white truncate'; p.textContent=m.title||'';
