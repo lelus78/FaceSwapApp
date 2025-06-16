@@ -336,20 +336,63 @@ def create_app():
                 )
         return jsonify(sticker_data)
 
-    @app.route("/api/approved_memes")
-    def get_approved_memes():
-        gallery_dir = os.path.join(app.static_folder, "gallery")
-        if not os.path.isdir(gallery_dir):
-            return jsonify([])
+    def load_user_gallery(username):
+        user_dir = os.path.join(app.static_folder, "gallery", username)
+        meta_path = os.path.join(user_dir, "gallery.json")
         items = []
-        for fname in sorted(os.listdir(gallery_dir)):
-            if fname.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+        data = []
+        if os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = []
+        if data:
+            for item in data:
+                fname = item.get("file")
+                if not fname:
+                    continue
+                path = os.path.join(user_dir, fname)
+                if not os.path.isfile(path):
+                    continue
                 items.append(
                     {
-                        "title": os.path.splitext(fname)[0],
-                        "url": url_for("static", filename=f"gallery/{fname}"),
+                        "title": item.get("title", os.path.splitext(fname)[0]),
+                        "url": url_for(
+                            "static", filename=f"gallery/{username}/{fname}"
+                        ),
+                        "shared": bool(item.get("shared")),
                     }
                 )
+        elif os.path.isdir(user_dir):
+            for fname in sorted(os.listdir(user_dir)):
+                if fname.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+                    items.append(
+                        {
+                            "title": os.path.splitext(fname)[0],
+                            "url": url_for(
+                                "static", filename=f"gallery/{username}/{fname}"
+                            ),
+                            "shared": False,
+                        }
+                    )
+        return items
+
+    @app.route("/api/approved_memes")
+    def get_approved_memes():
+        gallery_root = os.path.join(app.static_folder, "gallery")
+        if not os.path.isdir(gallery_root):
+            return jsonify([])
+
+        user = request.args.get("user")
+        if user:
+            return jsonify(load_user_gallery(user))
+
+        items = []
+        for username in sorted(os.listdir(gallery_root)):
+            items.extend(
+                [i for i in load_user_gallery(username) if i.get("shared")]
+            )
         return jsonify(items)
 
     @app.route("/api/memes")
@@ -360,12 +403,32 @@ def create_app():
     def api_add_meme():
         if "image" not in request.files:
             return jsonify({"error": "Immagine mancante"}), 400
+
+        user = request.form.get("user", "guest")
+        shared = request.form.get("shared", "false").lower() == "true"
         file = request.files["image"]
         fname = uuid.uuid4().hex + os.path.splitext(file.filename)[1]
-        save_path = os.path.join(app.static_folder, "gallery", fname)
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        user_dir = os.path.join(app.static_folder, "gallery", user)
+        os.makedirs(user_dir, exist_ok=True)
+        save_path = os.path.join(user_dir, fname)
         file.save(save_path)
-        return jsonify({"url": url_for("static", filename=f"gallery/{fname}")})
+
+        meta_path = os.path.join(user_dir, "gallery.json")
+        try:
+            if os.path.isfile(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                data = []
+        except Exception:
+            data = []
+
+        data.append({"file": fname, "title": os.path.splitext(file.filename)[0], "shared": shared})
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+        return jsonify({"url": url_for("static", filename=f"gallery/{user}/{fname}")})
 
     @app.route("/lottie_json/<path:sticker_path>")
     def get_lottie_json(sticker_path):

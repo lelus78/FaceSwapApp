@@ -423,9 +423,11 @@ export function setupEventListeners() {
   dom.addGalleryBtn.addEventListener('click', () => {
     updateMemePreview();
     const src = dom.memeCanvas.toDataURL('image/png');
-    const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
+    const user = window.currentUser || '';
+    const key = `gallery_${user || 'guest'}`;
+    const list = JSON.parse(localStorage.getItem(key) || '[]');
     const title = `Meme #${list.length + 1}`;
-    addToGallery(title, src, dom.captionTextInput.value);
+    addToGallery(title, src, dom.captionTextInput.value, user);
   });
   dom.shareBtn.addEventListener('click', handleShare);
   dom.downloadAnimBtn.addEventListener('click', handleDownloadAnimation);

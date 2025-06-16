@@ -1,12 +1,17 @@
-export async function loadGallery(container) {
-  const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
+export async function loadGallery(container, username = '') {
+  const key = `gallery_${username || 'guest'}`;
+  const local = JSON.parse(localStorage.getItem(key) || '[]');
   let serverItems = [];
   try {
-    const res = await fetch(`${window.location.origin}/api/approved_memes`);
+    const url = username
+      ? `/api/approved_memes?user=${encodeURIComponent(username)}`
+      : '/api/approved_memes';
+    const res = await fetch(`${window.location.origin}${url}`);
     serverItems = await res.json();
   } catch (err) {
     console.error('Errore caricamento galleria', err);
   }
+  if (container) container.dataset.user = username || '';
   renderGallery(container, [...local, ...serverItems]);
 }
 
@@ -64,10 +69,12 @@ export function setupGalleryInteraction(container) {
     } else if (remove) {
       const card = remove.closest('.gallery-item');
       if (card?.querySelector('img')?.dataset.local === '1') {
-        const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
+        const user = container.dataset.user || '';
+        const key = `gallery_${user || 'guest'}`;
+        const list = JSON.parse(localStorage.getItem(key) || '[]');
         const idx = Array.from(container.children).indexOf(card);
         list.splice(idx, 1);
-        localStorage.setItem('userGallery', JSON.stringify(list));
+        localStorage.setItem(key, JSON.stringify(list));
       }
       card?.remove();
     } else if (img) {
@@ -123,10 +130,12 @@ async function embedCaption(imgUrl, text) {
 }
 
 export async function loadExplore(container) {
-  const local = JSON.parse(localStorage.getItem('userGallery') || '[]');
   let server = [];
-  try { const r = await fetch(`${window.location.origin}/api/approved_memes`); server = await r.json(); } catch {}
-  const items = [...local, ...server].sort((a,b)=> (b.ts||0)-(a.ts||0));
+  try {
+    const r = await fetch(`${window.location.origin}/api/approved_memes`);
+    server = await r.json();
+  } catch {}
+  const items = server.sort((a,b)=> (b.ts||0)-(a.ts||0));
   let index=0; const batch=12; let filtered=items;
   function renderSlice(reset=false){
     if(reset){container.innerHTML=''; index=0;}
@@ -162,11 +171,20 @@ export async function loadExplore(container) {
   return {fetchMore, applyFilter};
 }
 
-export async function addToGallery(title, dataUrl, caption='') {
+export async function addToGallery(title, dataUrl, caption = '', username = '') {
+  const key = `gallery_${username || 'guest'}`;
   const withText = await embedCaption(dataUrl, caption);
-  const list = JSON.parse(localStorage.getItem('userGallery') || '[]');
+  const list = JSON.parse(localStorage.getItem(key) || '[]');
   list.push({ title, url: withText, caption, local: true, ts: Date.now() });
-  localStorage.setItem('userGallery', JSON.stringify(list));
+  localStorage.setItem(key, JSON.stringify(list));
+  try {
+    const blob = await (await fetch(withText)).blob();
+    const fd = new FormData();
+    fd.append('image', blob, 'meme.png');
+    fd.append('user', username);
+    fd.append('shared', 'false');
+    await fetch(`${window.location.origin}/api/meme`, { method: 'POST', body: fd });
+  } catch {}
   window.dispatchEvent(new Event('gallery-updated'));
   showToast('Salvato nella galleria');
 }

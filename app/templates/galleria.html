@@ -25,7 +25,10 @@
   import { closeModal } from '{{ url_for('static', filename='js/workflow.js') }}';
   const container = document.getElementById('user-gallery');
   const searchInput = document.getElementById('gallery-search');
-  function render(){ loadGallery(container).then(()=>setupGalleryInteraction(container)); }
+  function render(){
+    const user = window.currentUser || '';
+    loadGallery(container, user).then(()=>setupGalleryInteraction(container));
+  }
   render();
   window.addEventListener('gallery-updated', render);
   searchInput.addEventListener('input', e=>{
