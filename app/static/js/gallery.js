@@ -1,5 +1,8 @@
 const GALLERY_KEY = 'galleryData';
-const USERNAME = localStorage.getItem('username') || 'user';
+
+function getUsername() {
+    return localStorage.getItem('username') || 'user';
+}
 
 // Funzione da 'codex' per generare ID univoci
 export function generateId() {
@@ -52,7 +55,7 @@ function flattenUserData(data) {
             arr.forEach((item, idx) => {
                 items.push({
                     ...item,
-                    path: { user: USERNAME, date, tag, index: idx },
+                    path: { user: getUsername(), date, tag, index: idx },
                     local: true,
                 });
             });
@@ -63,7 +66,7 @@ function flattenUserData(data) {
 
 export async function loadGallery(container) {
     const migratedData = migrateData(); // Esegue la migrazione prima di caricare
-    const local = flattenUserData(migratedData[USERNAME] || {});
+    const local = flattenUserData(migratedData[getUsername()] || {});
     let serverItems = [];
     try {
         const res = await fetch(`${window.location.origin}/api/approved_memes`);
@@ -289,14 +292,25 @@ export async function addToGallery(title, dataUrl, caption = '', tags = [], shar
     const date = new Date(ts).toISOString().slice(0, 10);
     const mainTag = (tags[0] || 'misc').toLowerCase();
     const data = getGalleryData();
-    data[USERNAME] = data[USERNAME] || {};
-    data[USERNAME][date] = data[USERNAME][date] || {};
-    data[USERNAME][date][mainTag] = data[USERNAME][date][mainTag] || [];
+    const user = getUsername();
+    data[user] = data[user] || {};
+    data[user][date] = data[user][date] || {};
+    data[user][date][mainTag] = data[user][date][mainTag] || [];
     
     // Aggiunge il nuovo elemento con un ID univoco
-    data[USERNAME][date][mainTag].push({ id: generateId(), title, url: withText, caption, tags, ts, shared });
+    data[user][date][mainTag].push({ id: generateId(), title, url: withText, caption, tags, ts, shared });
     
     saveGalleryData(data);
+    if (window.currentUser) {
+        try {
+            const blob = await (await fetch(withText)).blob();
+            const fd = new FormData();
+            fd.append('image', blob, 'meme.png');
+            fd.append('user', window.currentUser);
+            fd.append('shared', shared);
+            await fetch('/api/meme', { method: 'POST', body: fd });
+        } catch (err) { console.error('Upload fallito', err); }
+    }
     window.dispatchEvent(new Event('gallery-updated'));
     showToast('Salvato nella galleria');
 }

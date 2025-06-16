@@ -34,13 +34,14 @@ from flask import (
     render_template,
     current_app,
     url_for,
+    session,
 )
 from werkzeug.utils import safe_join
 from flask_cors import CORS
 from flask_wtf import CSRFProtect
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
 
-from app.auth import auth_bp
+from app.auth import auth_bp, login_required
 from .forms import SearchForm
 from dotenv import load_dotenv
 
@@ -305,18 +306,18 @@ def create_app():
 
     @app.route("/")
     def home():
-        return render_template("index.html")
+        return render_template("index.html", username=session.get('user_id'))
 
     @app.route("/explore")
     def explore():
         form = SearchForm()
-        return render_template("esplora.html", form=form)
+        return render_template("esplora.html", form=form, username=session.get('user_id'))
 
     @app.route("/gallery")
     #   @login_required   # Uncomment if login is required
     def gallery_page():
         form = SearchForm()
-        return render_template("galleria.html", form=form)
+        return render_template("galleria.html", form=form, username=session.get('user_id'))
 
     @app.route("/api/stickers")
     def get_stickers_api():
