@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}FaceSwap{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com" defer></script>
@@ -12,7 +13,7 @@
 </head>
 <body class="antialiased bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-300" data-user="{{ username|default('') }}">
 <div class="flex min-h-screen">
-    <aside id="sidebar" class="hidden md:flex flex-col w-56 bg-gray-800 text-gray-200 p-4 space-y-4 border-r border-gray-700 sticky top-0 h-screen overflow-y-auto">
+    <aside id="sidebar" class="hidden md:flex flex-col w-56 bg-gray-800 text-gray-200 p-4 space-y-4 border-r border-gray-700 sticky top-0 h-screen overflow-y-auto" role="navigation" aria-label="Menu principale">
         <nav class="flex flex-col gap-3 text-sm">
             <a href="{{ url_for('explore') }}" class="hover:text-white">Esplora</a>
             <a href="{{ url_for('home') }}" class="hover:text-white">Crea</a>
@@ -25,7 +26,7 @@
         </nav>
     </aside>
     <div class="flex flex-col flex-1 min-h-screen">
-        <header class="relative text-center py-6 bg-gray-200 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
+        <header class="relative text-center py-6 bg-gray-200 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700" role="banner">
             <button id="sidebar-toggle" class="md:hidden absolute left-4 top-4 p-2 rounded-md bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-400 dark:hover:bg-gray-600" aria-label="Apri menu">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
@@ -34,7 +35,7 @@
                 <svg id="theme-icon" class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"></svg>
             </button>
         </header>
-        <main class="flex-1">
+        <main class="flex-1" role="main">
             {% block content %}{% endblock %}
         </main>
     </div>

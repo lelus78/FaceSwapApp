@@ -40,6 +40,7 @@ from flask_cors import CORS
 from flask_wtf import CSRFProtect
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
 
+from app.auth import auth_bp
 from .forms import SearchForm
 from dotenv import load_dotenv
 
@@ -72,7 +73,7 @@ MAX_IMAGE_DIMENSION = 1280
     sam_predictor,
     pipe,
     canny_detector,
-) = (None,) * 7
+) = (None, ) * 7
 
 
 def release_vram():
@@ -127,7 +128,8 @@ def ensure_pipeline_is_loaded():
             use_safetensors=True,
         )
         # Scheduler più stabile e veloce rispetto al default
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            pipe.scheduler.config)
         # Scarica dalla GPU ciò che non serve per liberare memoria
         pipe.enable_model_cpu_offload()
     return True
@@ -149,15 +151,14 @@ def ensure_face_swapper_is_loaded():
     if face_swapper is None:
         model_path = os.path.join("models", "inswapper_128.onnx")
         face_swapper = insightface.model_zoo.get_model(
-            model_path, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
-        )
+            model_path,
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 
 
 def ensure_face_restorer_is_loaded():
     global face_restorer
     if face_restorer is None and os.path.exists(
-        os.path.join("models", "GFPGANv1.4.pth")
-    ):
+            os.path.join("models", "GFPGANv1.4.pth")):
         face_restorer = GFPGANer(
             model_path=os.path.join("models", "GFPGANv1.4.pth"),
             upscale=1,
@@ -168,9 +169,8 @@ def ensure_face_restorer_is_loaded():
 
 
 # --- FUNZIONI HELPER ---
-def normalize_image(
-    img: Image.Image, max_dim: int = MAX_IMAGE_DIMENSION
-) -> Image.Image:
+def normalize_image(img: Image.Image,
+                    max_dim: int = MAX_IMAGE_DIMENSION) -> Image.Image:
     """Normalize orientation and optionally resize image."""
     img = ImageOps.exif_transpose(img)
     width, height = img.size
@@ -181,7 +181,9 @@ def normalize_image(
             new_height, new_width = max_dim, int(width * (max_dim / height))
         new_width -= new_width % 8
         new_height -= new_height % 8
-        print(f" [OTTIMIZZAZIONE] Immagine ridimensionata a {new_width}x{new_height}.")
+        print(
+            f" [OTTIMIZZAZIONE] Immagine ridimensionata a {new_width}x{new_height}."
+        )
         img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
     return img
 
@@ -207,8 +209,7 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
                 fill="white",
             )
         yolo_debug_img.save(
-            os.path.join(temp_dir, f"{debug_session_id}_yolo_detections.png")
-        )
+            os.path.join(temp_dir, f"{debug_session_id}_yolo_detections.png"))
 
     idx_map = {v: k for k, v in res.names.items()}
     target_idx = [idx_map[p] for p in parts_to_mask if p in idx_map]
@@ -217,17 +218,14 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
 
     final_mask_np = None
 
-    if (
-        getattr(res, "masks", None) is not None
-        and getattr(res.masks, "data", None) is not None
-    ):
+    if (getattr(res, "masks", None) is not None
+            and getattr(res.masks, "data", None) is not None):
         # Prefer YOLO segmentation masks when available. Use polygon coordinates
         # to avoid letterboxing misalignment issues.
         mask_polys = res.masks.xy  # already scaled to original image size
         combined = np.zeros((pil_img.height, pil_img.width), dtype=np.uint8)
-        for poly, cls_idx, conf in zip(
-            mask_polys, res.boxes.cls.tolist(), res.boxes.conf.tolist()
-        ):
+        for poly, cls_idx, conf in zip(mask_polys, res.boxes.cls.tolist(),
+                                       res.boxes.conf.tolist()):
             conf_val = conf.item() if hasattr(conf, "item") else float(conf)
             if int(cls_idx) in target_idx and conf_val > conf_threshold:
                 poly_int = np.round(np.array(poly)).astype(np.int32)
@@ -236,15 +234,15 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
             final_mask_np = combined
     if final_mask_np is None:
         detected_boxes = [
-            b.xyxy[0].cpu().numpy()
-            for b in res.boxes
-            if int(b.cls.item()) in target_idx and b.conf.item() > conf_threshold
+            b.xyxy[0].cpu().numpy() for b in res.boxes if
+            int(b.cls.item()) in target_idx and b.conf.item() > conf_threshold
         ]
         if not detected_boxes:
             return None
 
         box = detected_boxes[0]
-        center_point = np.array([[(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]])
+        center_point = np.array([[(box[0] + box[2]) / 2,
+                                  (box[1] + box[3]) / 2]])
         point_labels = np.array([1])
 
         sam_predictor.set_image(np.array(pil_img.convert("RGB")))
@@ -257,11 +255,9 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
         if masks is None:
             return None
 
-        idx = (
-            int(np.array(scores).argmax())
-            if not isinstance(scores, torch.Tensor)
-            else int(torch.argmax(scores).item())
-        )
+        idx = (int(np.array(scores).argmax())
+               if not isinstance(scores, torch.Tensor) else int(
+                   torch.argmax(scores).item()))
 
         if isinstance(masks, torch.Tensor):
             masks_np = masks.cpu().numpy()
@@ -278,12 +274,11 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
     if final_mask_np is None:
         return None
 
-    closed_mask_np = cv2.morphologyEx(
-        final_mask_np, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8)
-    )
-    dilated_mask_np = cv2.dilate(
-        closed_mask_np, np.ones((10, 10), np.uint8), iterations=1
-    )
+    closed_mask_np = cv2.morphologyEx(final_mask_np, cv2.MORPH_CLOSE,
+                                      np.ones((5, 5), np.uint8))
+    dilated_mask_np = cv2.dilate(closed_mask_np,
+                                 np.ones((10, 10), np.uint8),
+                                 iterations=1)
 
     final_mask = Image.fromarray(dilated_mask_np)
 
@@ -291,7 +286,8 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
         temp_dir = os.path.join(current_app.root_path, "temp")
         os.makedirs(temp_dir, exist_ok=True)
         debug_session_id = uuid.uuid4().hex[:8]
-        final_mask.save(os.path.join(temp_dir, f"{debug_session_id}_final_mask.png"))
+        final_mask.save(
+            os.path.join(temp_dir, f"{debug_session_id}_final_mask.png"))
 
     return final_mask
 
@@ -326,7 +322,9 @@ def create_app():
     def get_stickers_api():
         sticker_dir = os.path.join(app.static_folder, "stickers")
         if not os.path.isdir(sticker_dir):
-            print(f" [ATTENZIONE] La cartella '{sticker_dir}' non è stata trovata.")
+            print(
+                f" [ATTENZIONE] La cartella '{sticker_dir}' non è stata trovata."
+            )
             return jsonify([])
         sticker_data = []
         for root, dirs, files in os.walk(sticker_dir):
@@ -334,18 +332,17 @@ def create_app():
                 continue
             category_name = os.path.basename(root)
             sticker_paths = [
-                os.path.join(
-                    "static", os.path.relpath(root, app.static_folder), file
-                ).replace("\\", "/")
-                for file in sorted(files)
+                os.path.join("static", os.path.relpath(root,
+                                                       app.static_folder),
+                             file).replace("\\", "/") for file in sorted(files)
                 if file.lower().endswith((".png", ".webm", ".tgs"))
             ]
             if sticker_paths:
-                sticker_data.append(
-                    {"category": category_name, "stickers": sticker_paths}
-                )
+                sticker_data.append({
+                    "category": category_name,
+                    "stickers": sticker_paths
+                })
         return jsonify(sticker_data)
-
 
     @app.route("/api/approved_memes")
     def get_approved_memes():
@@ -363,15 +360,19 @@ def create_app():
                 except Exception:
                     meta = {}
             for fname in sorted(os.listdir(path)):
-                if not fname.lower().endswith((".png", "jpg", "jpeg", "webp", "gif")):
+                if not fname.lower().endswith(
+                    (".png", "jpg", "jpeg", "webp", "gif")):
                     continue
                 info = meta.get(fname, {})
                 if not info.get("shared"):
                     continue
-                rel = os.path.relpath(os.path.join(path, fname), app.static_folder)
+                rel = os.path.relpath(os.path.join(path, fname),
+                                      app.static_folder)
                 yield {
-                    "title": info.get("title", os.path.splitext(fname)[0]),
-                    "url": url_for("static", filename=rel.replace(os.sep, "/")),
+                    "title": info.get("title",
+                                      os.path.splitext(fname)[0]),
+                    "url": url_for("static", filename=rel.replace(os.sep,
+                                                                  "/")),
                     "caption": info.get("caption", ""),
                     "tags": info.get("tags", []),
                     "ts": info.get("ts"),
@@ -416,11 +417,16 @@ def create_app():
         except Exception:
             data = []
 
-        data.append({"file": fname, "title": os.path.splitext(file.filename)[0], "shared": shared})
+        data.append({
+            "file": fname,
+            "title": os.path.splitext(file.filename)[0],
+            "shared": shared
+        })
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
-        return jsonify({"url": url_for("static", filename=f"gallery/{user}/{fname}")})
+        return jsonify(
+            {"url": url_for("static", filename=f"gallery/{user}/{fname}")})
 
     @app.route("/lottie_json/<path:sticker_path>")
     def get_lottie_json(sticker_path):
@@ -433,8 +439,7 @@ def create_app():
             return jsonify({"error": "File non trovato"}), 404
 
         if not os.path.abspath(safe_path).startswith(
-            os.path.abspath(app.static_folder)
-        ):
+                os.path.abspath(app.static_folder)):
             return jsonify({"error": "Percorso non valido"}), 404
 
         try:
@@ -449,10 +454,8 @@ def create_app():
             if "subject_image" not in request.files:
                 return jsonify(error="Immagine soggetto mancante."), 400
             subject = normalize_image(
-                Image.open(io.BytesIO(request.files["subject_image"].read())).convert(
-                    "RGBA"
-                )
-            )
+                Image.open(io.BytesIO(
+                    request.files["subject_image"].read())).convert("RGBA"))
             processed = remove(subject)
             buf = io.BytesIO()
             processed.save(buf, format="PNG")
@@ -470,15 +473,16 @@ def create_app():
                 return jsonify(error="Dati mancanti"), 400
             ensure_pipeline_is_loaded()
             subject = normalize_image(
-                Image.open(io.BytesIO(request.files["subject_data"].read())).convert(
-                    "RGB"
-                )
-            )
+                Image.open(io.BytesIO(
+                    request.files["subject_data"].read())).convert("RGB"))
             mask = remove(subject, only_mask=True, post_process_mask=True)
             mask = ImageOps.invert(mask.convert("L"))
-            canny_map = canny_detector(subject, low_threshold=50, high_threshold=150)
+            canny_map = canny_detector(subject,
+                                       low_threshold=50,
+                                       high_threshold=150)
             if canny_map.size != subject.size:
-                canny_map = canny_map.resize(subject.size, Image.Resampling.LANCZOS)
+                canny_map = canny_map.resize(subject.size,
+                                             Image.Resampling.LANCZOS)
             result = pipe(
                 prompt=request.form["prompt"],
                 image=subject,
@@ -508,14 +512,13 @@ def create_app():
         try:
             if "scene_image" not in request.files:
                 return jsonify(error="Immagine mancante"), 400
-            enable_hires = request.form.get("enable_hires", "true").lower() == "true"
+            enable_hires = request.form.get("enable_hires",
+                                            "true").lower() == "true"
             denoise = float(request.form.get("tile_denoising_strength", 0.3))
             ensure_pipeline_is_loaded()
             scene = normalize_image(
-                Image.open(io.BytesIO(request.files["scene_image"].read())).convert(
-                    "RGB"
-                )
-            )
+                Image.open(io.BytesIO(
+                    request.files["scene_image"].read())).convert("RGB"))
             if enable_hires:
                 model = RRDBNet(
                     num_in_ch=3,
@@ -536,10 +539,14 @@ def create_app():
                 )
                 img_cv = cv2.cvtColor(np.array(scene), cv2.COLOR_RGB2BGR)
                 output, _ = upsampler.enhance(img_cv, outscale=2)
-                scene = Image.fromarray(cv2.cvtColor(output, cv2.COLOR_BGR2RGB))
-            canny_map = canny_detector(scene, low_threshold=50, high_threshold=150)
+                scene = Image.fromarray(cv2.cvtColor(output,
+                                                     cv2.COLOR_BGR2RGB))
+            canny_map = canny_detector(scene,
+                                       low_threshold=50,
+                                       high_threshold=150)
             if canny_map.size != scene.size:
-                canny_map = canny_map.resize(scene.size, Image.Resampling.LANCZOS)
+                canny_map = canny_map.resize(scene.size,
+                                             Image.Resampling.LANCZOS)
             full_mask = Image.new("L", scene.size, 255)
             result = pipe(
                 prompt="",
@@ -580,28 +587,29 @@ def create_app():
                 "basandoti sull'immagine fornita. Restituisci solo il prompt ottimizzato."
             )
             payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": system_prompt + "\nUtente: " + prompt_text},
-                            {
-                                "inlineData": {
-                                    "mimeType": "image/jpeg",
-                                    "data": base64_image,
-                                }
-                            },
-                        ]
-                    }
-                ]
+                "contents": [{
+                    "parts": [
+                        {
+                            "text": system_prompt + "\nUtente: " + prompt_text
+                        },
+                        {
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": base64_image,
+                            }
+                        },
+                    ]
+                }]
             }
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
-            resp = requests.post(
-                url, headers={"Content-Type": "application/json"}, json=payload
-            )
+            resp = requests.post(url,
+                                 headers={"Content-Type": "application/json"},
+                                 json=payload)
             resp.raise_for_status()
             result = resp.json()
             if result.get("candidates"):
-                text = result["candidates"][0]["content"]["parts"][0]["text"].strip('"')
+                text = result["candidates"][0]["content"]["parts"][0][
+                    "text"].strip('"')
                 return jsonify(enhanced_prompt=text)
             return jsonify(error="No prompt generated"), 500
         except Exception as e:
@@ -623,31 +631,31 @@ def create_app():
             system_prompt = (
                 f"Migliora il prompt per la parte '{part_name}'. "
                 "Rispondi in italiano con un testo adatto a Stable Diffusion. "
-                "Restituisci solo il prompt ottimizzato."
-            )
+                "Restituisci solo il prompt ottimizzato.")
             payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": system_prompt + "\nUtente: " + prompt_text},
-                            {
-                                "inlineData": {
-                                    "mimeType": "image/jpeg",
-                                    "data": base64_image,
-                                }
-                            },
-                        ]
-                    }
-                ]
+                "contents": [{
+                    "parts": [
+                        {
+                            "text": system_prompt + "\nUtente: " + prompt_text
+                        },
+                        {
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": base64_image,
+                            }
+                        },
+                    ]
+                }]
             }
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
-            resp = requests.post(
-                url, headers={"Content-Type": "application/json"}, json=payload
-            )
+            resp = requests.post(url,
+                                 headers={"Content-Type": "application/json"},
+                                 json=payload)
             resp.raise_for_status()
             result = resp.json()
             if result.get("candidates"):
-                text = result["candidates"][0]["content"]["parts"][0]["text"].strip('"')
+                text = result["candidates"][0]["content"]["parts"][0][
+                    "text"].strip('"')
                 return jsonify(enhanced_prompt=text)
             return jsonify(error="No prompt generated"), 500
         except Exception as e:
@@ -662,14 +670,13 @@ def create_app():
                 return jsonify(error="Missing image"), 400
             ensure_yolo_parser_is_loaded()
             image_pil = normalize_image(
-                Image.open(io.BytesIO(request.files["image"].read())).convert("RGB")
-            )
+                Image.open(io.BytesIO(
+                    request.files["image"].read())).convert("RGB"))
             results = yolo_parser(image_pil)[0]
-            return jsonify(
-                parts=sorted(
-                    list(set([results.names[int(cls)] for cls in results.boxes.cls]))
-                )
-            )
+            return jsonify(parts=sorted(
+                list(
+                    set([results.names[int(cls)]
+                         for cls in results.boxes.cls]))))
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=str(e)), 500
@@ -690,24 +697,24 @@ def create_app():
 
             prompts = json.loads(request.form.get("prompts"))
             current_image = normalize_image(
-                Image.open(io.BytesIO(request.files["image"].read())).convert("RGB")
-            )
+                Image.open(io.BytesIO(
+                    request.files["image"].read())).convert("RGB"))
 
             for part_name, prompt_text in prompts.items():
                 if not prompt_text:
                     continue
-                mask = make_mask(current_image, (part_name,))
+                mask = make_mask(current_image, (part_name, ))
                 if mask:
                     w, h = current_image.size
-                    canny_map = canny_detector(
-                        current_image, low_threshold=50, high_threshold=150
-                    )
+                    canny_map = canny_detector(current_image,
+                                               low_threshold=50,
+                                               high_threshold=150)
                     if canny_map.size != current_image.size:
-                        canny_map = canny_map.resize(
-                            current_image.size, Image.Resampling.LANCZOS
-                        )
+                        canny_map = canny_map.resize(current_image.size,
+                                                     Image.Resampling.LANCZOS)
                     canny_array = np.array(canny_map)
-                    mask_resized = mask.resize((w, h), Image.Resampling.LANCZOS)
+                    mask_resized = mask.resize((w, h),
+                                               Image.Resampling.LANCZOS)
                     mask_array = np.array(mask_resized.convert("L"))
                     canny_array[mask_array > 128] = 0
                     control_image = Image.fromarray(canny_array)
@@ -717,8 +724,7 @@ def create_app():
                                 current_app.root_path,
                                 "temp",
                                 f"debug_control_{part_name}.png",
-                            )
-                        )
+                            ))
                     current_image = pipe(
                         prompt=prompt_text,
                         image=current_image,
@@ -743,7 +749,7 @@ def create_app():
             traceback.print_exc()
             return jsonify(error=str(e)), 500
         finally:
-            yolo_parser, sam_predictor, pipe, canny_detector = (None,) * 4
+            yolo_parser, sam_predictor, pipe, canny_detector = (None, ) * 4
             release_vram()
 
     @app.route("/detect_faces", methods=["POST"])
@@ -754,18 +760,16 @@ def create_app():
                 return jsonify({"error": "Immagine mancante."}), 400
             ensure_face_analyzer_is_loaded()
             image_pil = normalize_image(
-                Image.open(io.BytesIO(request.files["image"].read())).convert("RGB")
-            )
+                Image.open(io.BytesIO(
+                    request.files["image"].read())).convert("RGB"))
             image_np = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
             faces = face_analyzer.get(image_np)
-            return jsonify(
-                {
-                    "faces": [
-                        {"id": i, "bbox": [int(c) for c in f.bbox]}
-                        for i, f in enumerate(faces)
-                    ]
-                }
-            )
+            return jsonify({
+                "faces": [{
+                    "id": i,
+                    "bbox": [int(c) for c in f.bbox]
+                } for i, f in enumerate(faces)]
+            })
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": f"Errore rilevamento volti: {e}"}), 500
@@ -777,26 +781,25 @@ def create_app():
     def final_swap():
         global face_analyzer, face_swapper, face_restorer
         try:
-            if (
-                "target_image_high_res" not in request.files
-                or "source_face_image" not in request.files
-            ):
+            if ("target_image_high_res" not in request.files
+                    or "source_face_image" not in request.files):
                 return jsonify(error="Immagini mancanti."), 400
             ensure_face_analyzer_is_loaded()
             ensure_face_swapper_is_loaded()
             ensure_face_restorer_is_loaded()
             target_pil = normalize_image(
                 Image.open(
-                    io.BytesIO(request.files["target_image_high_res"].read())
-                ).convert("RGB")
-            )
+                    io.BytesIO(request.files["target_image_high_res"].read())).
+                convert("RGB"))
             source_pil = normalize_image(
                 Image.open(
-                    io.BytesIO(request.files["source_face_image"].read())
-                ).convert("RGB")
-            )
-            target_img_cv = cv2.cvtColor(np.array(target_pil), cv2.COLOR_RGB2BGR)
-            source_img_cv = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR)
+                    io.BytesIO(
+                        request.files["source_face_image"].read())).convert(
+                            "RGB"))
+            target_img_cv = cv2.cvtColor(np.array(target_pil),
+                                         cv2.COLOR_RGB2BGR)
+            source_img_cv = cv2.cvtColor(np.array(source_pil),
+                                         cv2.COLOR_RGB2BGR)
             target_faces = face_analyzer.get(target_img_cv)
             source_faces = face_analyzer.get(source_img_cv)
             if not source_faces or not target_faces:
@@ -823,7 +826,7 @@ def create_app():
             traceback.print_exc()
             return jsonify(error=str(e)), 500
         finally:
-            face_analyzer, face_swapper, face_restorer = (None,) * 3
+            face_analyzer, face_swapper, face_restorer = (None, ) * 3
             release_vram()
 
     @app.route("/save_result_video", methods=["POST"])
@@ -849,7 +852,8 @@ def create_app():
             cmd.append(output_path)
             subprocess.run(cmd, check=True)
             os.remove(input_path)
-            rel = os.path.relpath(output_path, app.static_folder).replace(os.sep, "/")
+            rel = os.path.relpath(output_path,
+                                  app.static_folder).replace(os.sep, "/")
             return jsonify(url=url_for("static", filename=rel))
         except Exception as e:
             logging.exception("Errore conversione video")

@@ -4,7 +4,7 @@ import * as api from './api.js';
 import { state, dom } from './state.js';
 import { updateMemePreview, handleDownloadAnimation } from './memeEditor.js';
 import { getStickerAtPosition } from './stickers.js';
-import { addToGallery, migrateGallery } from './gallery.js';
+import { addToGallery } from './gallery.js';
 import { drawFaceBoxes, updateSelectionHighlights, refreshFaceBoxes, detectAndDrawFaces } from "./facebox.js";
 
 export function displayImage(src, imageElement, onLoadCallback = null) {

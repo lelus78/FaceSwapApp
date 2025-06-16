@@ -19,3 +19,4 @@ yapf==0.43.0
 #  Import obbligatori ma leggeri
 # -------------------------------------------------
 opencv-python-headless==4.11.0.86   # cv2 senza GUI (≈ 40 MB)
+segment-anything==1.0

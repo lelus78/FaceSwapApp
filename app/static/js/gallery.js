@@ -76,6 +76,7 @@ export async function loadGallery(container) {
 
 function renderGallery(container, items) {
 
+
     if (!container) return;
     container.innerHTML = '';
     items.forEach(m => {
@@ -183,7 +184,11 @@ export function setupGalleryInteraction(container) {
 
 export function initSidebarToggle(sidebar, toggleBtn, galleryToggle, galleryContainer) {
     if (toggleBtn) {
-        toggleBtn.addEventListener('click', () => sidebar.classList.toggle('hidden'));
+        toggleBtn.setAttribute('aria-expanded', !sidebar.classList.contains('hidden'));
+        toggleBtn.addEventListener('click', () => {
+            const hidden = sidebar.classList.toggle('hidden');
+            toggleBtn.setAttribute('aria-expanded', !hidden);
+        });
     }
     if (galleryToggle && galleryContainer) {
         galleryToggle.addEventListener('click', () => galleryContainer.classList.toggle('hidden'));
@@ -224,6 +229,7 @@ async function embedCaption(imgUrl, text) {
 
 
 export async function loadExplore(container) {
+
 
     // Logica di 'ip-adapter' per caricare solo gli elementi condivisi
     const data = getGalleryData();
