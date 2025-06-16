@@ -75,6 +75,7 @@ export async function loadGallery(container) {
 }
 
 function renderGallery(container, items) {
+
     if (!container) return;
     container.innerHTML = '';
     items.forEach(m => {
@@ -231,6 +232,7 @@ export async function loadExplore(container) {
             });
         });
     });
+
 
     let server = [];
     try { const r = await fetch(`${window.location.origin}/api/approved_memes`); server = await r.json(); } catch { }
