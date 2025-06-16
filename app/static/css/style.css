@@ -177,6 +177,8 @@
 /* === NUOVI STILI PER LA SELEZIONE DEI VOLTI === */
 .face-box {
     position: absolute;
+    pointer-events: auto;
+    z-index: 20;
     border: 2px solid var(--accent);
     cursor: pointer;
     transition: all 0.2s ease-in-out;

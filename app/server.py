@@ -122,14 +122,19 @@ def ensure_face_restorer_is_loaded():
         face_restorer = GFPGANer(model_path=os.path.join('models', 'GFPGANv1.4.pth'), upscale=1, arch='clean', channel_multiplier=2, bg_upsampler=None)
 
 # --- FUNZIONI HELPER ---
-def normalize_image(img: Image.Image, max_dim=MAX_IMAGE_DIMENSION) -> Image.Image:
+def normalize_image(img: Image.Image, max_dim: int = MAX_IMAGE_DIMENSION) -> Image.Image:
+    """Normalize orientation and optionally resize image."""
+    img = ImageOps.exif_transpose(img)
     width, height = img.size
     if width > max_dim or height > max_dim:
-        if width > height: new_width, new_height = max_dim, int(height * (max_dim / width))
-        else: new_height, new_width = max_dim, int(width * (max_dim / height))
-        new_width -= new_width % 8; new_height -= new_height % 8
+        if width > height:
+            new_width, new_height = max_dim, int(height * (max_dim / width))
+        else:
+            new_height, new_width = max_dim, int(width * (max_dim / height))
+        new_width -= new_width % 8
+        new_height -= new_height % 8
         print(f" [OTTIMIZZAZIONE] Immagine ridimensionata a {new_width}x{new_height}.")
-        return img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
     return img
 
 def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
