@@ -76,7 +76,9 @@ export function goToStep(stepNumber) {
   state.currentStep = stepNumber;
   document.querySelectorAll('.wizard-step').forEach(step => step.classList.add('hidden'));
   const stepId = `step-${stepNumber}-${['subject', 'scene', 'upscale', 'finalize'][stepNumber - 1]}`;
-  document.getElementById(stepId)?.classList.remove('hidden');
+  const stepEl = document.getElementById(stepId);
+  if (stepEl) stepEl.classList.remove('hidden');
+  setTimeout(refreshFaceBoxes, 50);
 }
 export function handleSubjectFile(file) {
   if (!file?.type.startsWith('image/')) return;
