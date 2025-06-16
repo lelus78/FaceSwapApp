@@ -423,9 +423,16 @@ export function setupEventListeners() {
   dom.addGalleryBtn.addEventListener('click', () => {
     updateMemePreview();
     const src = dom.memeCanvas.toDataURL('image/png');
-    const list = migrateGallery();
-    const title = `Meme #${list.length + 1}`;
-    addToGallery(title, src, dom.captionTextInput.value);
+
+    const data = JSON.parse(localStorage.getItem('galleryData') || '{}');
+    const user = localStorage.getItem('username') || 'user';
+    let count = 0;
+    const u = data[user] || {};
+    Object.values(u).forEach(tags => {
+      Object.values(tags).forEach(arr => { count += arr.length; });
+    });
+    const title = `Meme #${count + 1}`;
+    addToGallery(title, src, dom.captionTextInput.value, [], false);
   });
   dom.shareBtn.addEventListener('click', handleShare);
   dom.downloadAnimBtn.addEventListener('click', handleDownloadAnimation);
