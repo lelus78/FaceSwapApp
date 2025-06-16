@@ -3,7 +3,7 @@
 {% block header_title %}Login{% endblock %}
 {% block content %}
 <div class="max-w-sm mx-auto p-4">
-  <form method="post" class="space-y-4">
+  <form method="post" action="{{ url_for('auth.login') }}" class="space-y-4">
     <input name="username" type="text" required class="w-full p-2 rounded-md bg-gray-800 border border-gray-700" placeholder="Username">
     <input name="password" type="password" required class="w-full p-2 rounded-md bg-gray-800 border border-gray-700" placeholder="Password">
     {% if error %}<p class="text-red-500 text-sm">{{ error }}</p>{% endif %}
