@@ -25,6 +25,7 @@ filelock==3.13.1
 filterpy==1.4.5
 Flask==3.1.1
 flask-cors==6.0.0
+Flask-WTF==1.2.1
 flatbuffers==25.2.10
 fonttools==4.58.2
 fsspec==2024.6.1
