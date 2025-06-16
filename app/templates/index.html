@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="antialiased bg-gray-900">
 
@@ -68,7 +68,7 @@
                         </div>
                         <label class="toggle-label flex items-center justify-between mb-4 cursor-pointer">
                             <span class="text-gray-300">Miglioramento Automatico Prompt ✨</span>
-                            <div class="relative"><input type="checkbox" id="auto-enhance-prompt-toggle" class="toggle-checkbox sr-only"><div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div></div>
+                            <div class="relative"><input type="checkbox" id="auto-enhance-prompt-toggle" class="toggle-checkbox sr-only" aria-label="Migliora automaticamente il prompt"><div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div></div>
                         </label>
                         <button id="generate-scene-btn" class="btn btn-primary w-full mt-2 text-white font-bold py-2 px-4 rounded-lg">🎨 Genera Sfondo e Componi Scena</button>
                     </div>
@@ -81,7 +81,7 @@
                     <label class="toggle-label flex items-center justify-between mb-4 p-3 bg-gray-900 rounded-lg cursor-pointer">
                         <span class="text-gray-300 font-medium">Attiva Hi-Res Upscale (Lento)</span>
                         <div class="relative">
-                            <input type="checkbox" id="enable-hires-upscale-toggle" class="toggle-checkbox sr-only" checked>
+                            <input type="checkbox" id="enable-hires-upscale-toggle" class="toggle-checkbox sr-only" checked aria-label="Abilita upscaling">
                             <div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div>
                         </div>
                     </label>
@@ -100,7 +100,7 @@
                         <h3 class="text-xl font-semibold text-gray-300 mb-3">A. Face Swap Mirato</h3>
                         <label class="toggle-label flex items-center justify-between mb-2 text-sm cursor-pointer">
                             <span class="text-gray-400">Mostra riquadri selezione volto</span>
-                            <div class="relative"><input type="checkbox" id="toggle-face-boxes" class="toggle-checkbox sr-only" checked><div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div></div>
+                            <div class="relative"><input type="checkbox" id="toggle-face-boxes" class="toggle-checkbox sr-only" checked aria-label="Mostra riquadri volti"><div class="toggle-bg w-10 h-5 bg-gray-600 rounded-full"><div class="toggle-dot absolute w-4 h-4 bg-white rounded-full shadow top-0.5 left-0.5 transition-transform"></div></div></div>
                         </label>
                         <div class="relative upload-box flex flex-col items-center justify-center p-4 rounded-lg min-h-[220px]">
                             <img id="source-img-preview" src="" alt="Anteprima Sorgente" class="hidden rounded-lg" style="max-height: 200px; z-index: 1;"/>
@@ -239,6 +239,6 @@
         </main>
     </div>
     
-    <script type="module" src="{{ url_for('static', filename='script.js') }}" defer></script>
+    <script type="module" src="{{ url_for('static', filename='js/script.js') }}" defer></script>
 </body>
 </html>
