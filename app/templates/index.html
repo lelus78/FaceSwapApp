@@ -89,7 +89,7 @@
                 </label>
                 <div class="relative upload-box flex flex-col items-center justify-center p-4 rounded-lg min-h-[220px]">
                     <img id="source-img-preview" src="" alt="Anteprima Sorgente" class="hidden rounded-lg" style="max-height: 200px; z-index: 1;"/>
-                    <div id="source-face-boxes-container" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></div>
+                    <div id="source-face-boxes-container" class="absolute top-0 left-0 w-full h-full z-10"></div>
                     <label for="source-img-input" id="source-upload-prompt" class="absolute inset-0 flex items-center justify-center cursor-pointer">
                         <span class="text-sm font-medium text-gray-400">Carica il volto da inserire</span>
                     </label>
@@ -190,7 +190,7 @@
         <div class="preview-container relative flex justify-center items-center mb-6 bg-gray-900 rounded-lg min-h-[400px]">
             <img id="result-image-display" src="" alt="Risultato" class="rounded-lg max-w-full h-auto shadow-md hidden z-0 object-contain">
             <canvas id="meme-canvas" class="hidden rounded-lg max-w-full h-auto shadow-md object-contain"></canvas>
-            <div id="target-face-boxes-container" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></div>
+            <div id="target-face-boxes-container" class="absolute top-0 left-0 w-full h-full z-10"></div>
             <p id="result-placeholder" class="text-gray-500">Il risultato del processo apparirà qui...</p>
         </div>
         <div class="flex justify-center items-center gap-2 flex-wrap">

@@ -123,6 +123,7 @@ def ensure_face_restorer_is_loaded():
 
 # --- FUNZIONI HELPER ---
 def normalize_image(img: Image.Image, max_dim=MAX_IMAGE_DIMENSION) -> Image.Image:
+    img = ImageOps.exif_transpose(img)
     width, height = img.size
     if width > max_dim or height > max_dim:
         if width > height: new_width, new_height = max_dim, int(height * (max_dim / width))
