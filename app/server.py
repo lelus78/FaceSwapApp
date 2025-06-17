@@ -12,6 +12,9 @@ import subprocess
 import gc
 import torch
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from insightface.app import FaceAnalysis
 import insightface.model_zoo
 from gfpgan import GFPGANer
@@ -48,7 +51,7 @@ from dotenv import load_dotenv
 try:
     from segment_anything import sam_model_registry, SamPredictor
 except ImportError:
-    print(" [ERRORE] La libreria 'segment_anything' non è installata.")
+    logger.error("La libreria 'segment_anything' non è installata.")
     sam_model_registry, SamPredictor = None, None
 
 try:
@@ -56,7 +59,7 @@ try:
 
     ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
 except ImportError:
-    print(" [ATTENZIONE] imageio_ffmpeg non è installato.")
+    logger.warning("imageio_ffmpeg non è installato.")
     ffmpeg_path = None
 
 # === CONFIGURAZIONE GLOBALE ===
@@ -78,7 +81,7 @@ MAX_IMAGE_DIMENSION = 1280
 
 
 def release_vram():
-    print(" [VRAM] Rilascio della memoria cache della GPU...")
+    logger.info("Rilascio della memoria cache della GPU...")
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -87,7 +90,7 @@ def release_vram():
 def ensure_yolo_parser_is_loaded():
     global yolo_parser
     if yolo_parser is None:
-        print(" [VRAM] Caricamento YOLO Human Parser...")
+        logger.info("Caricamento YOLO Human Parser...")
         yolo_parser = YOLO(os.path.join("models", "yolo-human-parse-v2.pt"))
 
 
@@ -98,20 +101,21 @@ def ensure_sam_predictor_is_loaded():
         model_filename = "sam_vit_l_0b3195.pth"
         model_path = os.path.abspath(os.path.join("models", model_filename))
         if os.path.exists(model_path):
-            print(
-                f" [VRAM] Caricamento Segment Anything (SAM) - Modello: {model_type}..."
+            logger.info(
+                "Caricamento Segment Anything (SAM) - Modello: %s...",
+                model_type,
             )
             sam_model = sam_model_registry[model_type](checkpoint=model_path)
             sam_model.to(device="cuda" if torch.cuda.is_available() else "cpu")
             sam_predictor = SamPredictor(sam_model)
         else:
-            print(f" [ERRORE] Modello SAM '{model_filename}' non trovato.")
+            logger.error("Modello SAM '%s' non trovato.", model_filename)
 
 
 def ensure_pipeline_is_loaded():
     global pipe, canny_detector
     if pipe is None:
-        print(f" [VRAM] Caricamento pipeline SDXL '{CFG_MODEL_NAME}'...")
+        logger.info("Caricamento pipeline SDXL '%s'...", CFG_MODEL_NAME)
         model_path = os.path.join("models", "checkpoints", CFG_MODEL_NAME)
         if not os.path.isdir(model_path):
             return False
@@ -139,7 +143,7 @@ def ensure_pipeline_is_loaded():
 def ensure_face_analyzer_is_loaded():
     global face_analyzer
     if face_analyzer is None:
-        print(" [VRAM] Caricamento FaceAnalysis...")
+        logger.info("Caricamento FaceAnalysis...")
         face_analyzer = FaceAnalysis(
             name="buffalo_l",
             providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
@@ -182,9 +186,7 @@ def normalize_image(img: Image.Image,
             new_height, new_width = max_dim, int(width * (max_dim / height))
         new_width -= new_width % 8
         new_height -= new_height % 8
-        print(
-            f" [OTTIMIZZAZIONE] Immagine ridimensionata a {new_width}x{new_height}."
-        )
+        logger.info("Immagine ridimensionata a %dx%d.", new_width, new_height)
         img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
     return img
 
@@ -311,21 +313,24 @@ def create_app():
     @app.route("/explore")
     def explore():
         form = SearchForm()
-        return render_template("esplora.html", form=form, username=session.get('user_id'))
+        return render_template("esplora.html",
+                               form=form,
+                               username=session.get('user_id'))
 
     @app.route("/gallery")
-    @login_required   # Uncomment if login is required
+    @login_required  # Uncomment if login is required
     def gallery_page():
         form = SearchForm()
-        return render_template("galleria.html", form=form, username=session.get('user_id'))
+        return render_template("galleria.html",
+                               form=form,
+                               username=session.get('user_id'))
 
     @app.route("/api/stickers")
     def get_stickers_api():
         sticker_dir = os.path.join(app.static_folder, "stickers")
         if not os.path.isdir(sticker_dir):
-            print(
-                f" [ATTENZIONE] La cartella '{sticker_dir}' non è stata trovata."
-            )
+            logger.warning("La cartella '%s' non è stata trovata.",
+                           sticker_dir)
             return jsonify([])
         sticker_data = []
         for root, dirs, files in os.walk(sticker_dir):
@@ -393,7 +398,7 @@ def create_app():
         return get_approved_memes()
 
     @app.route("/api/meme", methods=["POST"])
-    @login_required # Uncomment if login is required
+    @login_required  # Uncomment if login is required
     def api_add_meme():
         if "image" not in request.files:
             return jsonify({"error": "Immagine mancante"}), 400
@@ -739,9 +744,9 @@ def create_app():
                         guidance_scale=10,
                     ).images[0]
                 else:
-                    print(
-                        f" [ATTENZIONE] Maschera per '{part_name}' non generata, step saltato."
-                    )
+                    logger.warning(
+                        "Maschera per '%s' non generata, step saltato.",
+                        part_name)
             buf = io.BytesIO()
             current_image.save(buf, format="PNG")
             buf.seek(0)
