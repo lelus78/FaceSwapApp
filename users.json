@@ -1,0 +1,8 @@
+{
+    "lele": {
+        "password": "scrypt:32768:8:1$Y1C0jwuRzzxrvUBx$22318f91d84310330ff826019df5c5e03f3a69ffab3713b01be22511c25c2225eb5d612f562299065a1d8d64c5b34ddc225d263829fc8939d75c0825d0b438ad"
+    },
+    "lelus78": {
+        "password": "scrypt:32768:8:1$3uTpn5g6cRwTlsm0$9137cb6aa5c4f64259a8f5f53e48ea24958968b5e96a7df0ad1bdcc4bac9150514fd0df97dddcbe5ae5d4a56acefb72feed095afb46f32ac998aac020544c60b"
+    }
+}
