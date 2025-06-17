@@ -43,6 +43,7 @@ from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
 
 from app.auth import auth_bp, login_required
 from .forms import SearchForm
+from .user_model import init_db
 from dotenv import load_dotenv
 
 try:
@@ -296,6 +297,7 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
 def create_app():
     app = Flask(__name__)
     load_dotenv()
+    init_db()
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
@@ -311,13 +313,17 @@ def create_app():
     @app.route("/explore")
     def explore():
         form = SearchForm()
-        return render_template("esplora.html", form=form, username=session.get('user_id'))
+        return render_template("esplora.html",
+                               form=form,
+                               username=session.get('user_id'))
 
     @app.route("/gallery")
-    @login_required   # Uncomment if login is required
+    @login_required  # Uncomment if login is required
     def gallery_page():
         form = SearchForm()
-        return render_template("galleria.html", form=form, username=session.get('user_id'))
+        return render_template("galleria.html",
+                               form=form,
+                               username=session.get('user_id'))
 
     @app.route("/api/stickers")
     def get_stickers_api():
@@ -393,7 +399,7 @@ def create_app():
         return get_approved_memes()
 
     @app.route("/api/meme", methods=["POST"])
-    @login_required # Uncomment if login is required
+    @login_required  # Uncomment if login is required
     def api_add_meme():
         if "image" not in request.files:
             return jsonify({"error": "Immagine mancante"}), 400
