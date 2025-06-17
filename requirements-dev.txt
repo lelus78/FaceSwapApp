@@ -7,7 +7,8 @@ Flask-WTF==1.2.1
 python-dotenv==1.1.0         #  <-- mancava, ora c’è
 requests==2.32.4
 tqdm==4.67.1
-
+jax==0.6.1
+jaxlib==0.6.1
 # -------------------------------------------------
 #  Dev & test
 # -------------------------------------------------
@@ -18,7 +19,9 @@ yapf==0.43.0
 # -------------------------------------------------
 #  Import obbligatori ma leggeri
 # -------------------------------------------------
-opencv-python-headless==4.11.0.86   # cv2 senza GUI (≈ 40 MB)
+opencv-contrib-python==4.11.0.86
 segment-anything==1.0
 Flask-Login==0.6.2
-mediapipe==0.10.11
+mediapipe==0.10.21
+cffi==1.17.1
+ml_dtypes==0.5.1
