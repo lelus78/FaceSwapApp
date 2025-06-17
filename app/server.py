@@ -46,6 +46,7 @@ from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
 
 from app.auth import auth_bp, login_required
 from .forms import SearchForm
+from .user_model import init_db
 from dotenv import load_dotenv
 
 try:
@@ -314,6 +315,7 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
 def create_app():
     app = Flask(__name__)
     load_dotenv()
+    init_db()
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE

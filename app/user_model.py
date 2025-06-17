@@ -1,7 +1,6 @@
-# app/user_model.py (versione con DEBUG)
-
 import json
 import os
+
 import logging
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -12,15 +11,34 @@ USER_FILE = os.path.join(os.path.dirname(__file__), '..', 'users.json')
 logger = logging.getLogger(__name__)
 
 
-def _load_users():
-    """Funzione helper per caricare gli utenti dal file JSON."""
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True)
+    username = Column(String(150), unique=True, nullable=False)
+    password = Column(String, nullable=False)
+
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
+    migrate_from_json()
+
+
+def migrate_from_json():
     if not os.path.exists(USER_FILE):
-        return {}
+        return
+    session = SessionLocal()
     try:
+        if session.query(User).first():
+            return
         with open(USER_FILE, 'r') as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return {}
+            data = json.load(f)
+        for name, info in data.items():
+            session.add(User(username=name, password=info.get('password', '')))
+        session.commit()
+    finally:
+        session.close()
+
 
 
 def _save_users(users):
@@ -43,6 +61,9 @@ def create_user(username, password):
     if username in users:
         logger.debug("L'utente '%s' esiste già. Creazione fallita.", username)
         return False
+    finally:
+        session.close()
+
 
     hashed_password = generate_password_hash(password)
     users[username] = {'password': hashed_password}
