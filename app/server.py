@@ -415,7 +415,10 @@ def create_app():
         if "image" not in request.files:
             return jsonify({"error": "Immagine mancante"}), 400
 
-        user = request.form.get("user", "guest")
+        session_user = session.get("user_id")
+        user = request.form.get("user", session_user or "guest")
+        if user != session_user:
+            return jsonify({"error": "Forbidden"}), 403
         shared = request.form.get("shared", "false").lower() == "true"
         file = request.files["image"]
         filename, err = validate_upload(file)
