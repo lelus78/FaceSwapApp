@@ -26,3 +26,4 @@ Flask-Login==0.6.2
 mediapipe==0.10.21
 cffi==1.17.1
 ml_dtypes==0.5.1
+SQLAlchemy 
