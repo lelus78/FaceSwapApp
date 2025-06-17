@@ -34,8 +34,12 @@ def login():
         password = form.password.data.strip()
         
         if verify_user(username, password):
+            if hasattr(session, "regenerate"):
+                session.regenerate()
+            else:
+                session.clear()
             session['user_id'] = username
-            return redirect(url_for('home')) 
+            return redirect(url_for('home'))
         else:
             # Aggiunge un errore generico se le credenziali non sono valide
             form.username.errors.append("Username o password non validi.")
@@ -57,7 +61,10 @@ def register():
             # Aggiunge un errore specifico se l'utente esiste già
             form.username.errors.append('Questo username è già in uso.')
         else:
-            # Fa il login e reindirizza
+            if hasattr(session, "regenerate"):
+                session.regenerate()
+            else:
+                session.clear()
             session['user_id'] = username
             return redirect(url_for('home'))
 

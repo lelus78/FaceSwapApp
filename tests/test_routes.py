@@ -2,6 +2,7 @@ import importlib
 import os
 import sys
 import types
+import uuid
 import pytest
 
 # Ensure the app package is importable
@@ -176,3 +177,37 @@ def test_frontend_elements_present(client):
     assert 'id="source-face-boxes-container"' in html
     assert 'id="target-face-boxes-container"' in html
     assert 'id="add-gallery-btn"' in html
+
+
+def test_session_management(client):
+    username = 'tester_' + uuid.uuid4().hex[:8]
+    password = 'secret'
+
+    # Register user
+    res = client.post(
+        '/auth/register',
+        data={
+            'username': username,
+            'password': password,
+            'password2': password,
+            'submit': 'Registrati',
+        },
+    )
+    assert res.status_code == 302
+    with client.session_transaction() as sess:
+        assert sess.get('user_id') == username
+
+    # Logout clears session
+    res = client.get('/auth/logout')
+    assert res.status_code == 302
+    with client.session_transaction() as sess:
+        assert 'user_id' not in sess
+
+    # Login again and expect new session cookie
+    res = client.post(
+        '/auth/login',
+        data={'username': username, 'password': password, 'submit': 'Accedi'},
+    )
+    assert res.status_code == 302
+    with client.session_transaction() as sess:
+        assert sess.get('user_id') == username
