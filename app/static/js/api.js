@@ -171,3 +171,29 @@ export async function generateAllParts(imageBlob, prompts) {
     await handleResponse(response);
     return response.blob();
 }
+
+export async function generateAllPartsAsync(imageBlob, prompts) {
+    const formData = new FormData();
+    formData.append('image', imageBlob);
+    formData.append('prompts', JSON.stringify(prompts));
+    const response = await csrfFetch(`${BASE_URL}/async/generate_all_parts`, { method: 'POST', body: formData, cache: 'no-cache' });
+    await handleResponse(response);
+    return response.json();
+}
+
+export async function finalSwapAsync(targetBlob, sourceFile, sourceIndex, targetIndex) {
+    const formData = new FormData();
+    formData.append('target_image_high_res', targetBlob);
+    formData.append('source_face_image', sourceFile);
+    formData.append('source_face_index', sourceIndex);
+    formData.append('target_face_index', targetIndex);
+    const response = await csrfFetch(`${BASE_URL}/async/final_swap`, { method: 'POST', body: formData, cache: 'no-cache' });
+    await handleResponse(response);
+    return response.json();
+}
+
+export async function getTaskStatus(taskId) {
+    const response = await csrfFetch(`${BASE_URL}/task_status/${taskId}`);
+    await handleResponse(response);
+    return response.json();
+}
