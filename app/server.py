@@ -94,7 +94,6 @@ def release_vram():
     torch.cuda.empty_cache()
 
 
-<<<<<<< codex/integrate-task-queue-and-progress-feedback
 def init_celery(app):
     celery.conf.update(
         broker_url=app.config["CELERY_BROKER_URL"],
@@ -108,7 +107,6 @@ def init_celery(app):
 
     celery.Task = ContextTask
     return celery
-=======
 def validate_upload(file):
     filename = secure_filename(file.filename)
     ext = os.path.splitext(filename)[1].lower()
@@ -121,7 +119,6 @@ def validate_upload(file):
     if size > limit:
         return None, "File troppo grande"
     return filename, None
->>>>>>> ip-adapter
 
 
 # --- FUNZIONI DI CARICAMENTO MODELLI ---
@@ -440,14 +437,10 @@ def create_app():
     init_db()
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
-<<<<<<< codex/integrate-task-queue-and-progress-feedback
     app.config.setdefault("CELERY_BROKER_URL", os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"))
     app.config.setdefault("CELERY_RESULT_BACKEND", os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"))
-
     init_celery(app)
-=======
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
->>>>>>> ip-adapter
 
     csrf = CSRFProtect(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
@@ -872,59 +865,8 @@ def create_app():
             if "image" not in request.files:
                 return jsonify(error="Dati mancanti"), 400
             prompts = json.loads(request.form.get("prompts"))
-<<<<<<< codex/integrate-task-queue-and-progress-feedback
             image_bytes = request.files["image"].read()
             result = process_generate_all_parts(image_bytes, prompts)
-=======
-            file = request.files["image"]
-            _, err = validate_upload(file)
-            if err:
-                return jsonify(error=err), 400
-            current_image = normalize_image(
-                Image.open(io.BytesIO(file.read())).convert("RGB"))
-
-            for part_name, prompt_text in prompts.items():
-                if not prompt_text:
-                    continue
-                mask = make_mask(current_image, (part_name, ))
-                if mask:
-                    w, h = current_image.size
-                    canny_map = canny_detector(current_image,
-                                               low_threshold=50,
-                                               high_threshold=150)
-                    if canny_map.size != current_image.size:
-                        canny_map = canny_map.resize(current_image.size,
-                                                     Image.Resampling.LANCZOS)
-                    canny_array = np.array(canny_map)
-                    mask_resized = mask.resize((w, h),
-                                               Image.Resampling.LANCZOS)
-                    mask_array = np.array(mask_resized.convert("L"))
-                    canny_array[mask_array > 128] = 0
-                    control_image = Image.fromarray(canny_array)
-                    if DEBUG_MODE:
-                        control_image.save(
-                            os.path.join(
-                                current_app.root_path,
-                                "temp",
-                                f"debug_control_{part_name}.png",
-                            ))
-                    current_image = pipe(
-                        prompt=prompt_text,
-                        image=current_image,
-                        mask_image=mask_resized,
-                        control_image=control_image,
-                        width=w,
-                        height=h,
-                        controlnet_conditioning_scale=0.8,
-                        num_inference_steps=CFG_DETAIL_STEPS,
-                        strength=1.0,
-                        guidance_scale=10,
-                    ).images[0]
-                else:
-                    logger.warning(
-                        "Maschera per '%s' non generata, step saltato.",
-                        part_name)
->>>>>>> ip-adapter
             buf = io.BytesIO()
             result.save(buf, format="PNG")
             buf.seek(0)
@@ -981,7 +923,6 @@ def create_app():
                 "source_face_image" not in request.files
             ):
                 return jsonify(error="Immagini mancanti."), 400
-<<<<<<< codex/integrate-task-queue-and-progress-feedback
             target_bytes = request.files["target_image_high_res"].read()
             source_bytes = request.files["source_face_image"].read()
             s_idx = int(request.form.get("source_face_index", 0))
@@ -991,47 +932,6 @@ def create_app():
             result.save(buf, format="PNG")
             buf.seek(0)
             return send_file(buf, mimetype="image/png")
-=======
-            ensure_face_analyzer_is_loaded()
-            ensure_face_swapper_is_loaded()
-            ensure_face_restorer_is_loaded()
-            tgt_file = request.files["target_image_high_res"]
-            src_file = request.files["source_face_image"]
-            for f in (tgt_file, src_file):
-                _, err = validate_upload(f)
-                if err:
-                    return jsonify(error=err), 400
-            target_pil = normalize_image(
-                Image.open(io.BytesIO(tgt_file.read())).convert("RGB"))
-            source_pil = normalize_image(
-                Image.open(io.BytesIO(src_file.read())).convert("RGB"))
-            target_img_cv = cv2.cvtColor(np.array(target_pil),
-                                         cv2.COLOR_RGB2BGR)
-            source_img_cv = cv2.cvtColor(np.array(source_pil),
-                                         cv2.COLOR_RGB2BGR)
-            target_faces = face_analyzer.get(target_img_cv)
-            source_faces = face_analyzer.get(source_img_cv)
-            if not source_faces or not target_faces:
-                return jsonify(error="Volti non trovati."), 400
-            source_face_index = int(request.form.get("source_face_index", 0))
-            target_face_index = int(request.form.get("target_face_index", 0))
-            result_img = face_swapper.get(
-                target_img_cv,
-                target_faces[target_face_index],
-                source_faces[source_face_index],
-                paste_back=True,
-            )
-            if face_restorer:
-                _, _, result_img = face_restorer.enhance(
-                    result_img,
-                    has_aligned=False,
-                    only_center_face=False,
-                    paste_back=True,
-                    weight=0.8,
-                )
-            _, buf = cv2.imencode(".png", result_img)
-            return send_file(io.BytesIO(buf.tobytes()), mimetype="image/png")
->>>>>>> ip-adapter
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=str(e)), 500
