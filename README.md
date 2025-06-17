@@ -78,6 +78,8 @@ Create `.env` in the project root:
 
 ```bash
 GEMINI_API_KEY="YOUR_GOOGLE_GEMINI_KEY"
+# Enable verbose logging (development only). Leave unset or 0 in production
+DEBUG_MODE=1
 ```
 
 ### Run Locally/Production

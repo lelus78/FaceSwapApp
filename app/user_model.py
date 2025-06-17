@@ -1,12 +1,15 @@
 import json
 import os
-from sqlalchemy import Column, Integer, String
-from sqlalchemy.exc import IntegrityError
+
+import logging
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from .database import Base, SessionLocal, engine
+logging.basicConfig(level=logging.INFO)
 
+# Definiamo il percorso del nostro "database" JSON
 USER_FILE = os.path.join(os.path.dirname(__file__), '..', 'users.json')
+logger = logging.getLogger(__name__)
+
 
 
 class User(Base):
@@ -37,26 +40,54 @@ def migrate_from_json():
         session.close()
 
 
-def create_user(username: str, password: str) -> bool:
-    session = SessionLocal()
-    hashed = generate_password_hash(password)
+
+def _save_users(users):
+    """Funzione helper per salvare il dizionario degli utenti nel file JSON."""
+    logger.debug("DENTRO _save_users")
+    logger.debug("Percorso del file target: %s", os.path.abspath(USER_FILE))
+    logger.debug("Dati che sto per salvare: %s", users)
     try:
-        session.add(User(username=username, password=hashed))
-        session.commit()
-        return True
-    except IntegrityError:
-        session.rollback()
+        with open(USER_FILE, "w") as f:
+            json.dump(users, f, indent=4)
+        logger.debug("Salvataggio completato con successo")
+    except Exception as e:
+        logger.exception("ERRORE DURANTE IL SALVATAGGIO DEL FILE: %s", e)
+
+
+def create_user(username, password):
+    """Crea un nuovo utente, esegue l'hashing della password e lo salva."""
+    logger.debug("Chiamata a create_user per l'utente: '%s'", username)
+    users = _load_users()
+    if username in users:
+        logger.debug("L'utente '%s' esiste già. Creazione fallita.", username)
         return False
     finally:
         session.close()
 
 
-def verify_user(username: str, password: str) -> bool:
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter_by(username=username).first()
-        if not user:
-            return False
-        return check_password_hash(user.password, password)
-    finally:
-        session.close()
+    hashed_password = generate_password_hash(password)
+    users[username] = {'password': hashed_password}
+
+    _save_users(users)
+    logger.debug("Utente '%s' aggiunto.", username)
+    return True
+
+
+def verify_user(username, password):
+    """Verifica se l'username esiste e se la password fornita è corretta."""
+    logger.debug("Chiamata a verify_user per l'utente: '%s'", username)
+    users = _load_users()
+    logger.debug("Utenti caricati per la verifica: %s", list(users.keys()))
+
+    if username not in users:
+        logger.debug("Utente non trovato nel dizionario.")
+        return False
+
+    hashed_password = users[username].get('password')
+
+    if check_password_hash(hashed_password, password):
+        logger.debug("Verifica password riuscita!")
+        return True
+
+    logger.debug("Verifica password fallita.")
+    return False
