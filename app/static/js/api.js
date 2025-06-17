@@ -46,6 +46,17 @@ export async function getStickers() {
     return response.json();
 }
 
+export async function createSceneAsync(processedSubjectBlob, finalPrompt) {
+    const formData = new FormData();
+    formData.append('subject_data', processedSubjectBlob);
+    formData.append('prompt', finalPrompt);
+
+    // Chiama la nuova rotta asincrona
+    const response = await csrfFetch(`${BASE_URL}/async/create_scene`, { method: 'POST', body: formData });
+    await handleResponse(response);
+    return response.json(); // Si aspetta una risposta JSON con il task_id
+}
+
 export async function prepareSubject(subjectFile) {
     const formData = new FormData();
     formData.append('subject_image', subjectFile);
@@ -196,4 +207,22 @@ export async function getTaskStatus(taskId) {
     const response = await csrfFetch(`${BASE_URL}/task_status/${taskId}`);
     await handleResponse(response);
     return response.json();
+}
+
+/**
+ * Avvia il processo di detailing e upscale in modo asincrono.
+ * @param {Blob} sceneImageBlob - L'immagine della scena da elaborare.
+ * @param {boolean} enableHires - Flag per abilitare o meno l'upscaling.
+ * @param {number} denoisingStrength - La forza del denoising.
+ * @returns {Promise<Object>} - Una promessa che si risolve con l'ID del task.
+ */
+export async function detailAndUpscaleAsync(sceneImageBlob, enableHires, denoisingStrength) {
+    const formData = new FormData();
+    formData.append('scene_image', sceneImageBlob);
+    formData.append('enable_hires', enableHires);
+    formData.append('tile_denoising_strength', denoisingStrength);
+
+    const response = await csrfFetch(`${BASE_URL}/async/detail_and_upscale`, { method: 'POST', body: formData });
+    await handleResponse(response);
+    return response.json(); // Restituisce { task_id: "..." }
 }

@@ -66,26 +66,6 @@ export function finishProgressBar() {
   }, 200);
 }
 
-export async function pollTask(taskId, title) {
-  startProgressBar(title, 60);
-  while (true) {
-    const status = await api.getTaskStatus(taskId);
-    const p = status.progress || 0;
-    dom.progressBar.style.width = `${p}%`;
-    dom.progressText.textContent = `${p}%`;
-    if (status.state === 'SUCCESS') {
-      finishProgressBar();
-      const resp = await fetch(`data:image/png;base64,${status.result.data}`);
-      return resp.blob();
-    }
-    if (status.state === 'FAILURE') {
-      finishProgressBar();
-      throw new Error(status.error || 'Task failed');
-    }
-    await new Promise(r => setTimeout(r, 1000));
-  }
-}
-
 export function closeModal(id) {
   const modal = document.getElementById(id);
   if (modal) modal.style.display = 'none';
@@ -151,61 +131,151 @@ export async function handlePrepareSubject() {
 }
 
 export async function handleCreateScene() {
-  if (!dom.bgPromptInput.value || !state.processedSubjectBlob) return;
-  startProgressBar('Step 2: Creazione Scena...', 45);
-  try {
-    let prompt = dom.bgPromptInput.value;
-    const currentImage = state.sceneImageBlob || state.processedSubjectBlob;
-    if (dom.autoEnhancePromptToggle.checked && currentImage) {
-      prompt = (await api.enhancePrompt(currentImage, prompt)).enhanced_prompt;
-      dom.bgPromptInput.value = prompt;
+    if (!dom.bgPromptInput.value || !state.processedSubjectBlob) {
+        return showError('Dati Mancanti', 'Assicurati di aver caricato un soggetto e scritto un prompt.');
     }
-    state.sceneImageBlob = await api.createScene(state.processedSubjectBlob, prompt);
-    state.finalImageWithSwap = null;
-    displayImage(state.sceneImageBlob, dom.resultImageDisplay, () => {
+
+    try {
+        let prompt = dom.bgPromptInput.value;
+        // Se l'opzione è attiva, migliora il prompt con l'AI prima di procedere
+        if (dom.autoEnhancePromptToggle.checked) {
+            startProgressBar('✨ Miglioramento prompt con AI...', 10);
+            const enhanced = await api.enhancePrompt(state.processedSubjectBlob, prompt);
+            prompt = enhanced.enhanced_prompt;
+            dom.bgPromptInput.value = prompt;
+            finishProgressBar();
+        }
+
+        // 1. Chiama la NUOVA funzione asincrona dell'API
+        const taskInfo = await api.createSceneAsync(state.processedSubjectBlob, prompt);
+
+        // 2. Passa l'ID del task alla NOSTRA funzione di polling e attende il risultato
+        const resultBlob = await pollTask(taskInfo.task_id, '🎨 Creazione Scena AI in corso...');
+
+        // 3. Una volta ricevuto il risultato, aggiorna l'interfaccia
+        state.sceneImageBlob = resultBlob;
+        state.finalImageWithSwap = null;
+        displayImage(state.sceneImageBlob, dom.resultImageDisplay);
         detectAndDrawFaces(state.sceneImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
-    });
-    dom.gotoStep3Btn.disabled = false;
-  } catch (err)
- {
-    showError('Errore Creazione Scena', err.message);
-  } finally {
-    finishProgressBar();
-  }
+
+        dom.gotoStep3Btn.disabled = false;
+
+    } catch (err) {
+        finishProgressBar(); // Assicurati di chiudere la barra in caso di errore
+        showError('Errore Creazione Scena', err.message);
+    }
 }
 
+// *** INIZIO MODIFICA ***
+// La funzione è stata riscritta per essere asincrona, usando la nuova API
 export async function handleUpscaleAndDetail() {
-  if (!state.sceneImageBlob) return;
-  startProgressBar('Step 3: Upscale & Detailing...', 90);
-  try {
-    state.upscaledImageBlob = await api.upscaleAndDetail(state.sceneImageBlob, dom.enableHiresUpscaleToggle.checked, dom.tileDenoisingSlider.value);
-    state.finalImageWithSwap = null;
-    displayImage(state.upscaledImageBlob, dom.resultImageDisplay, () => {
-        detectAndDrawFaces(state.upscaledImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
-    });
-    goToStep(4);
-  } catch (err) {
-    showError('Errore Upscale', err.message);
-  } finally {
-    finishProgressBar();
-  }
+    if (!state.sceneImageBlob) {
+        return showError('Dati Mancanti', 'Genera prima una scena prima di poterla migliorare.');
+    }
+
+    // Prendi i parametri dall'interfaccia
+    const enableHires = dom.enableHiresUpscaleToggle.checked;
+    const denoising = dom.tileDenoisingSlider.value;
+
+    try {
+        // 1. Chiama la nuova API asincrona che restituisce un task_id
+        const taskInfo = await api.detailAndUpscaleAsync(state.sceneImageBlob, enableHires, denoising);
+        
+        // 2. Usa la funzione di polling per attendere il risultato (il blob dell'immagine)
+        const resultBlob = await pollTask(taskInfo.task_id, '✨ Miglioramento e Upscaling in corso...');
+
+        // 3. Aggiorna lo stato e l'interfaccia con il risultato finale
+        state.upscaledImageBlob = resultBlob;
+        state.finalImageWithSwap = null;
+        
+        displayImage(state.upscaledImageBlob, dom.resultImageDisplay, () => {
+            detectAndDrawFaces(state.upscaledImageBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+        });
+        
+        goToStep(4);
+
+    } catch (err) {
+        // La barra di progresso viene già chiusa da pollTask, quindi mostriamo solo l'errore
+        showError('Errore Upscale', err.message);
+    }
+}
+// *** FINE MODIFICA ***
+
+
+async function pollTask(taskId, progressTitle = 'Elaborazione AI...') {
+    // 1. Avvia la barra di progresso
+    startProgressBar(progressTitle, 60); // Stima una durata di 60s per il timeout grafico
+    const pollingInterval = 2000; // Controlla lo stato ogni 2 secondi
+
+    try {
+        // 2. Inizia un ciclo di controlli che si interromperà solo in caso di successo o fallimento
+        while (true) {
+            const status = await api.getTaskStatus(taskId);
+
+            // Aggiorna la UI con la percentuale di progresso
+            if (status.progress) {
+                dom.progressBar.style.width = `${status.progress}%`;
+                dom.progressText.textContent = `${status.progress}%`;
+            }
+
+            // 3. Se il task ha SUCCESSO...
+            if (status.state === 'SUCCESS') {
+                if (status.result && status.result.data) {
+                    // Converte l'immagine da base64 a un oggetto Blob
+                    const imageUrl = `data:image/png;base64,${status.result.data}`;
+                    const imageBlob = await (await fetch(imageUrl)).blob();
+                    // Restituisce il risultato al chiamante e interrompe il ciclo
+                    return imageBlob; 
+                } else {
+                    // Se non c'è un risultato valido, lancia un errore
+                    throw new Error('Il task è terminato con successo ma non ha restituito dati validi.');
+                }
+            }
+            
+            // 4. Se il task FALLISCE...
+            if (status.state === 'FAILURE' || status.state === 'REVOKED') {
+                // Lancia un errore che interromperà il ciclo e verrà catturato dal blocco catch
+                throw new Error(status.error || 'Il task è fallito senza un messaggio di errore specifico.');
+            }
+
+            // 5. Se è ancora in corso (PENDING o PROGRESS), attende prima del prossimo controllo
+            await new Promise(resolve => setTimeout(resolve, pollingInterval));
+        }
+    } finally {
+        // 6. Questo blocco 'finally' viene eseguito SEMPRE alla fine, 
+        // sia in caso di successo che di fallimento, assicurando che la barra di progresso venga chiusa.
+        finishProgressBar();
+    }
 }
 
 export async function handlePerformSwap() {
-  const targetImg = state.finalImageWithSwap || state.upscaledImageBlob;
-  if (state.selectedSourceIndex < 0 || state.selectedTargetIndex < 0 || !targetImg) return;
-  try {
-    const { task_id } = await api.finalSwapAsync(targetImg, state.sourceImageFile, state.selectedSourceIndex, state.selectedTargetIndex);
-    state.finalImageWithSwap = await pollTask(task_id, 'Step 4: Face Swap...');
-    displayImage(state.finalImageWithSwap, dom.resultImageDisplay, () => {
-        detectAndDrawFaces(state.finalImageWithSwap, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
-    });
-    state.selectedTargetIndex = -1;
-    dom.selectedTargetId.textContent = 'Nessuno';
-    dom.swapBtn.disabled = true;
-  } catch (err) {
-    showError('Errore Face Swap', err.message);
-  }
+    const targetImg = state.finalImageWithSwap || state.upscaledImageBlob;
+    if (state.selectedSourceIndex < 0 || state.selectedTargetIndex < 0 || !targetImg || !state.sourceImageFile) {
+        showError('Dati Mancanti', 'Seleziona un volto sorgente e un volto di destinazione.');
+        return;
+    }
+
+    try {
+        // 1. Avvia il task asincrono
+        const taskInfo = await api.finalSwapAsync( // Usa la funzione corretta da api.js
+            targetImg, 
+            state.sourceImageFile, 
+            state.selectedSourceIndex, 
+            state.selectedTargetIndex
+        );
+        
+        // 2. Passa l'ID alla nostra nuova funzione di polling e attendi il risultato (il blob dell'immagine)
+        const resultBlob = await pollTask(taskInfo.task_id, 'Face Swap in corso...');
+
+        // 3. Ora che hai il risultato, usalo!
+        state.finalImageWithSwap = resultBlob;
+        displayImage(resultBlob, dom.resultImageDisplay);
+        detectAndDrawFaces(resultBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+
+    } catch (err) {
+        // pollTask lancerà un errore in caso di fallimento, che verrà catturato qui
+        showError('Errore Face Swap', err.message);
+    }
 }
 
 export async function handleAnalyzeParts() {
@@ -243,44 +313,57 @@ export function renderDynamicPrompts(parts) {
   });
 }
 
+// Sostituisci la vecchia funzione in app/static/js/workflow.js con questa
+
 export async function handleGenerateAll() {
-  const imageToInpaint = state.finalImageWithSwap || state.upscaledImageBlob || state.sceneImageBlob || state.processedSubjectBlob || state.subjectFile;
-  if (!imageToInpaint) return showError('Immagine Mancante', 'Non c\'è un\'immagine su cui applicare le modifiche.');
-  const prompts = {};
-  const inputs = dom.dynamicPromptsContainer.querySelectorAll('.prompt-input');
-  for (const input of inputs) {
-    const partName = input.dataset.partName;
-    let promptText = input.value.trim();
-    if (promptText) {
-      if (dom.autoEnhancePromptToggle.checked) {
-        startProgressBar(`✨ Miglioramento prompt per ${partName}...`, 5);
-        try {
-          const enhanced = await api.enhancePartPrompt(partName, promptText, imageToInpaint);
-          promptText = enhanced.enhanced_prompt;
-          input.value = promptText;
-        } catch (err) {
-          console.error('Errore nel migliorare il prompt per', partName, err);
-        } finally {
-          finishProgressBar();
-        }
-      }
-      prompts[partName] = promptText;
+    // 1. Trova l'immagine di partenza su cui applicare le modifiche
+    const imageToInpaint = state.finalImageWithSwap || state.upscaledImageBlob || state.sceneImageBlob || state.processedSubjectBlob || state.subjectFile;
+    if (!imageToInpaint) {
+        return showError('Immagine Mancante', 'Non c\'è un\'immagine su cui applicare le modifiche.');
     }
-  }
-  if (Object.keys(prompts).length === 0) return showError('Nessun Prompt', 'Scrivi una descrizione per almeno una parte.');
-  dom.generateAllBtn.disabled = true;
-  try {
-    const { task_id } = await api.generateAllPartsAsync(imageToInpaint, prompts);
-    const resultBlob = await pollTask(task_id, '🎨 Generazione Multi-Parte in corso...');
-    state.finalImageWithSwap = resultBlob;
-    displayImage(resultBlob, dom.resultImageDisplay);
-    detectAndDrawFaces(resultBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
-  } catch (err) {
-    showError('Errore Generazione', err.message);
-  } finally {
-    dom.generateAllBtn.disabled = false;
-    dom.dynamicPromptsContainer.querySelectorAll('.prompt-input').forEach(inp => inp.value = '');
-  }
+
+    // 2. Raccoglie tutti i prompt scritti dall'utente
+    const prompts = {};
+    const inputs = dom.dynamicPromptsContainer.querySelectorAll('.prompt-input');
+    for (const input of inputs) {
+        const partName = input.dataset.partName;
+        const promptText = input.value.trim();
+        if (promptText) {
+            prompts[partName] = promptText;
+        }
+    }
+
+    if (Object.keys(prompts).length === 0) {
+        return showError('Nessun Prompt', 'Scrivi una descrizione per almeno una parte da modificare.');
+    }
+
+    // Disabilita il pulsante per evitare doppi click
+    dom.generateAllBtn.disabled = true;
+
+    try {
+        // 3. Avvia il task asincrono sul server passando immagine e prompts
+        const taskInfo = await api.generateAllPartsAsync(imageToInpaint, prompts);
+        console.log("Task di generazione multi-parte avviato con ID:", taskInfo.task_id);
+
+        // 4. Usa la nostra funzione di polling unificata per attendere il risultato
+        const resultBlob = await pollTask(taskInfo.task_id, '🎨 Generazione Multi-Parte in corso...');
+        console.log("Generazione completata, ricevuto il blob dell'immagine.");
+
+        // 5. Una volta ricevuto il risultato (il blob dell'immagine), aggiorna lo stato e mostra l'immagine
+        state.finalImageWithSwap = resultBlob;
+        displayImage(resultBlob, dom.resultImageDisplay);
+        
+        // Esegui di nuovo il rilevamento dei volti sulla nuova immagine
+        detectAndDrawFaces(resultBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
+
+    } catch (err) {
+        // 6. Se pollTask fallisce, cattura l'errore e mostralo all'utente
+        showError('Errore durante la Generazione', err.message);
+    } finally {
+        // 7. Riabilita il pulsante e pulisce i campi di input, sia in caso di successo che di fallimento
+        dom.generateAllBtn.disabled = false;
+        dom.dynamicPromptsContainer.querySelectorAll('.prompt-input').forEach(inp => inp.value = '');
+    }
 }
 
 export async function handleGenerateCaption() {

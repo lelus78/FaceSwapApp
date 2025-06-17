@@ -129,3 +129,4 @@ zipp==3.23.0
 celery==5.4.0
 redis==5.0.7
 SQLAlchemy 
+eventlet==0.35.1 

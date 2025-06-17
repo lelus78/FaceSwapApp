@@ -1,11 +1,20 @@
 <!DOCTYPE html>
-<html lang="it" class="dark">
+<html lang="it" class="dark no-fouc">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}FaceSwap{% endblock %}</title>
+
+    <style>
+      .no-fouc {
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.3s ease-in;
+      }
+    </style>
+
     <script src="https://cdn.tailwindcss.com" defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
@@ -56,5 +65,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 {% block scripts %}{% endblock %}
+
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    document.documentElement.classList.remove('no-fouc');
+  });
+</script>
+
 </body>
 </html>

@@ -1,59 +1,33 @@
 @echo off
+:: Script per avviare l'ambiente di sviluppo di FaceSwapApp con terminali colorati
 
-:: =================================================================
-:: Script per avviare il server Python con privilegi di Amministratore
-:: =================================================================
+:: Imposta il titolo della finestra principale dello script
+title Avvio FaceSwapApp
 
-REM --- Controllo dei Privilegi di Amministratore ---
->nul 2>&1 "%SYSTEMROOT%\system32\cacls.exe" "%SYSTEMROOT%\system32\config\system"
+:: Imposta il percorso della cartella del tuo progetto
+set "PROJECT_PATH=C:\Users\lelus\Documents\FaceSwapApp"
 
-REM Se il controllo fallisce (codice di errore diverso da 0), non siamo amministratori.
-if '%errorlevel%' NEQ '0' (
-    echo Richiesta dei privilegi di Amministratore in corso...
-    goto UACPrompt
-) else (
-    goto gotAdmin
-)
+:: Imposta il percorso per attivare l'ambiente virtuale
+set "VENV_ACTIVATE=%PROJECT_PATH%\venv\Scripts\activate"
 
-:UACPrompt
-    echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"
-    echo UAC.ShellExecute "%~s0", "", "", "runas", 1 >> "%temp%\getadmin.vbs"
-    "%temp%\getadmin.vbs"
-    exit /B
+echo [+] Avvio del server Flask (terminale Acqua) e del worker Celery (terminale Verde)...
 
-:gotAdmin
-    if exist "%temp%\getadmin.vbs" ( del "%temp%\getadmin.vbs" )
-    pushd "%CD%"
-    CD /D "%~dp0"
-:: --- Fine Controllo Privilegi ---
+:: Colori: 0=Nero, A=Verde Chiaro, B=Acqua. Il primo carattere e' lo sfondo, il secondo il testo.
 
+:: Avvia il primo terminale per il server Flask con uno schema di colori personalizzato
+:: Sfondo Nero (0), Testo Acqua (B)
+start "Flask Server" cmd /k "color 0B && %VENV_ACTIVATE% && python run.py"
 
-echo.
-echo ===================================================
-echo   Avvio di AI Face Swap Studio (come Amministratore)
-echo ===================================================
-echo.
+:: Attende 2 secondi per dare tempo al primo terminale di avviarsi in modo pulito
+timeout /t 2 /nobreak >nul
 
-REM Imposta la cartella del progetto.
-set PROJECT_DIR=%~dp0
+@echo off
+:: ... (le altre righe restano uguali) ...
 
-REM Naviga alla cartella del progetto
-cd /d %PROJECT_DIR%
+:: Avvia il secondo terminale per il worker Celery in modalità SOLO (la più stabile per Windows)
+start "Celery Worker" cmd /k "color 0A && %VENV_ACTIVATE% && celery -A app.server.celery worker --loglevel=info -P solo"
 
-REM Controlla se l'ambiente virtuale esiste
-if not exist "venv\Scripts\activate" (
-    echo Errore: Ambiente virtuale non trovato.
-    pause
-    exit
-)
+:: ...
+echo [+] Fatto. Le due finestre colorate sono state avviate.
 
-echo [+] Attivazione dell'ambiente virtuale Python...
-call venv\Scripts\activate
-
-echo [+] Avvio del server Python...
-REM Viene avviato nella stessa finestra, cosi vediamo subito i log
-python ../run.py
-
-echo.
-echo Il server e' stato chiuso. Premi un tasto per uscire.
-pause
+exit
