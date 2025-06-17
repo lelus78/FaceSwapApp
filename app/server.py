@@ -603,9 +603,12 @@ def create_app():
                 }]
             }
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
-            resp = requests.post(url,
-                                 headers={"Content-Type": "application/json"},
-                                 json=payload)
+            resp = requests.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=10,
+            )
             resp.raise_for_status()
             result = resp.json()
             if result.get("candidates"):
@@ -613,6 +616,8 @@ def create_app():
                     "text"].strip('"')
                 return jsonify(enhanced_prompt=text)
             return jsonify(error="No prompt generated"), 500
+        except requests.Timeout:
+            return jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."), 504
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=f"Gemini error: {e}"), 500
@@ -649,9 +654,12 @@ def create_app():
                 }]
             }
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
-            resp = requests.post(url,
-                                 headers={"Content-Type": "application/json"},
-                                 json=payload)
+            resp = requests.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=10,
+            )
             resp.raise_for_status()
             result = resp.json()
             if result.get("candidates"):
@@ -659,6 +667,8 @@ def create_app():
                     "text"].strip('"')
                 return jsonify(enhanced_prompt=text)
             return jsonify(error="No prompt generated"), 500
+        except requests.Timeout:
+            return jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."), 504
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=f"Gemini error: {e}"), 500
