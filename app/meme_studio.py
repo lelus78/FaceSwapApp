@@ -66,9 +66,13 @@ def generate_caption_proxy():
             }]
         }
 
-        response = requests.post(google_api_url,
-                                 headers={'Content-Type': 'application/json'},
-                                 json=payload)
+
+        response = requests.post(
+            google_api_url,
+            headers={'Content-Type': 'application/json'},
+            json=payload,
+            timeout=10,
+        )
         response.raise_for_status()
         result = response.json()
 
@@ -84,6 +88,8 @@ def generate_caption_proxy():
                 f"Gemini non ha restituito una didascalia valida. Causa: {error_info}"
             }), 500
 
+    except requests.Timeout:
+        return jsonify({"error": "La richiesta a Gemini ha impiegato troppo tempo."}), 504
     except Exception as e:
         traceback.print_exc()
         return jsonify(
@@ -132,9 +138,13 @@ def generate_tags_proxy():
             }]
         }
 
-        response = requests.post(google_api_url,
-                                 headers={"Content-Type": "application/json"},
-                                 json=payload)
+
+        response = requests.post(
+            google_api_url,
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=10,
+        )
         response.raise_for_status()
         result = response.json()
 
@@ -153,6 +163,8 @@ def generate_tags_proxy():
                 f"Gemini non ha restituito tag validi. Causa: {error_info}"
             }), 500
 
+    except requests.Timeout:
+        return jsonify({"error": "La richiesta a Gemini ha impiegato troppo tempo."}), 504
     except Exception as e:
         traceback.print_exc()
         return jsonify(
