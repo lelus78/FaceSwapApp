@@ -17,6 +17,7 @@ ngrok.exe
 FaceSwapApp.zip
 .env
 users.json
+users.db
 
 # Ignora tutti gli sticker per velocizzare Git
 app/static/stickers/

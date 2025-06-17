@@ -13,6 +13,9 @@ import gc
 import base64
 import torch
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from insightface.app import FaceAnalysis
 import insightface.model_zoo
 from gfpgan import GFPGANer
@@ -38,19 +41,20 @@ from flask import (
     url_for,
     session,
 )
-from werkzeug.utils import safe_join
+from werkzeug.utils import safe_join, secure_filename
 from flask_cors import CORS
 from flask_wtf import CSRFProtect
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
 
 from app.auth import auth_bp, login_required
 from .forms import SearchForm
+from .user_model import init_db
 from dotenv import load_dotenv
 
 try:
     from segment_anything import sam_model_registry, SamPredictor
 except ImportError:
-    print(" [ERRORE] La libreria 'segment_anything' non è installata.")
+    logger.error("La libreria 'segment_anything' non è installata.")
     sam_model_registry, SamPredictor = None, None
 
 try:
@@ -58,14 +62,16 @@ try:
 
     ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
 except ImportError:
-    print(" [ATTENZIONE] imageio_ffmpeg non è installato.")
+    logger.warning("imageio_ffmpeg non è installato.")
     ffmpeg_path = None
 
 # === CONFIGURAZIONE GLOBALE ===
-DEBUG_MODE = True
+DEBUG_MODE = os.getenv("DEBUG_MODE", "0") == "1"
 CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
 CFG_DETAIL_STEPS = 18
 MAX_IMAGE_DIMENSION = 1280
+MAX_UPLOAD_SIZE = 8 * 1024 * 1024  # 8MB limit
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 
 # Celery instance (configured later in create_app)
 celery = Celery(__name__)
@@ -83,11 +89,12 @@ celery = Celery(__name__)
 
 
 def release_vram():
-    print(" [VRAM] Rilascio della memoria cache della GPU...")
+    logger.info("Rilascio della memoria cache della GPU...")
     gc.collect()
     torch.cuda.empty_cache()
 
 
+<<<<<<< codex/integrate-task-queue-and-progress-feedback
 def init_celery(app):
     celery.conf.update(
         broker_url=app.config["CELERY_BROKER_URL"],
@@ -101,13 +108,27 @@ def init_celery(app):
 
     celery.Task = ContextTask
     return celery
+=======
+def validate_upload(file):
+    filename = secure_filename(file.filename)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return None, "Formato immagine non supportato"
+    file.seek(0, os.SEEK_END)
+    size = file.tell()
+    file.seek(0)
+    limit = current_app.config.get("MAX_CONTENT_LENGTH", MAX_UPLOAD_SIZE)
+    if size > limit:
+        return None, "File troppo grande"
+    return filename, None
+>>>>>>> ip-adapter
 
 
 # --- FUNZIONI DI CARICAMENTO MODELLI ---
 def ensure_yolo_parser_is_loaded():
     global yolo_parser
     if yolo_parser is None:
-        print(" [VRAM] Caricamento YOLO Human Parser...")
+        logger.info("Caricamento YOLO Human Parser...")
         yolo_parser = YOLO(os.path.join("models", "yolo-human-parse-v2.pt"))
 
 
@@ -118,20 +139,21 @@ def ensure_sam_predictor_is_loaded():
         model_filename = "sam_vit_l_0b3195.pth"
         model_path = os.path.abspath(os.path.join("models", model_filename))
         if os.path.exists(model_path):
-            print(
-                f" [VRAM] Caricamento Segment Anything (SAM) - Modello: {model_type}..."
+            logger.info(
+                "Caricamento Segment Anything (SAM) - Modello: %s...",
+                model_type,
             )
             sam_model = sam_model_registry[model_type](checkpoint=model_path)
             sam_model.to(device="cuda" if torch.cuda.is_available() else "cpu")
             sam_predictor = SamPredictor(sam_model)
         else:
-            print(f" [ERRORE] Modello SAM '{model_filename}' non trovato.")
+            logger.error("Modello SAM '%s' non trovato.", model_filename)
 
 
 def ensure_pipeline_is_loaded():
     global pipe, canny_detector
     if pipe is None:
-        print(f" [VRAM] Caricamento pipeline SDXL '{CFG_MODEL_NAME}'...")
+        logger.info("Caricamento pipeline SDXL '%s'...", CFG_MODEL_NAME)
         model_path = os.path.join("models", "checkpoints", CFG_MODEL_NAME)
         if not os.path.isdir(model_path):
             return False
@@ -159,7 +181,7 @@ def ensure_pipeline_is_loaded():
 def ensure_face_analyzer_is_loaded():
     global face_analyzer
     if face_analyzer is None:
-        print(" [VRAM] Caricamento FaceAnalysis...")
+        logger.info("Caricamento FaceAnalysis...")
         face_analyzer = FaceAnalysis(
             name="buffalo_l",
             providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
@@ -202,9 +224,7 @@ def normalize_image(img: Image.Image,
             new_height, new_width = max_dim, int(width * (max_dim / height))
         new_width -= new_width % 8
         new_height -= new_height % 8
-        print(
-            f" [OTTIMIZZAZIONE] Immagine ridimensionata a {new_width}x{new_height}."
-        )
+        logger.info("Immagine ridimensionata a %dx%d.", new_width, new_height)
         img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
     return img
 
@@ -417,12 +437,17 @@ def final_swap_task(self, target_bytes, source_bytes, s_idx, t_idx):
 def create_app():
     app = Flask(__name__)
     load_dotenv()
+    init_db()
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
+<<<<<<< codex/integrate-task-queue-and-progress-feedback
     app.config.setdefault("CELERY_BROKER_URL", os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"))
     app.config.setdefault("CELERY_RESULT_BACKEND", os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"))
 
     init_celery(app)
+=======
+    app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
+>>>>>>> ip-adapter
 
     csrf = CSRFProtect(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
@@ -436,21 +461,24 @@ def create_app():
     @app.route("/explore")
     def explore():
         form = SearchForm()
-        return render_template("esplora.html", form=form, username=session.get('user_id'))
+        return render_template("esplora.html",
+                               form=form,
+                               username=session.get('user_id'))
 
     @app.route("/gallery")
-    @login_required   # Uncomment if login is required
+    @login_required  # Uncomment if login is required
     def gallery_page():
         form = SearchForm()
-        return render_template("galleria.html", form=form, username=session.get('user_id'))
+        return render_template("galleria.html",
+                               form=form,
+                               username=session.get('user_id'))
 
     @app.route("/api/stickers")
     def get_stickers_api():
         sticker_dir = os.path.join(app.static_folder, "stickers")
         if not os.path.isdir(sticker_dir):
-            print(
-                f" [ATTENZIONE] La cartella '{sticker_dir}' non è stata trovata."
-            )
+            logger.warning("La cartella '%s' non è stata trovata.",
+                           sticker_dir)
             return jsonify([])
         sticker_data = []
         for root, dirs, files in os.walk(sticker_dir):
@@ -518,15 +546,21 @@ def create_app():
         return get_approved_memes()
 
     @app.route("/api/meme", methods=["POST"])
-    @login_required # Uncomment if login is required
+    @login_required  # Uncomment if login is required
     def api_add_meme():
         if "image" not in request.files:
             return jsonify({"error": "Immagine mancante"}), 400
 
-        user = request.form.get("user", "guest")
+        session_user = session.get("user_id")
+        user = request.form.get("user", session_user or "guest")
+        if user != session_user:
+            return jsonify({"error": "Forbidden"}), 403
         shared = request.form.get("shared", "false").lower() == "true"
         file = request.files["image"]
-        fname = uuid.uuid4().hex + os.path.splitext(file.filename)[1]
+        filename, err = validate_upload(file)
+        if err:
+            return jsonify({"error": err}), 400
+        fname = uuid.uuid4().hex + os.path.splitext(filename)[1]
 
         user_dir = os.path.join(app.static_folder, "gallery", user)
         os.makedirs(user_dir, exist_ok=True)
@@ -545,7 +579,7 @@ def create_app():
 
         data.append({
             "file": fname,
-            "title": os.path.splitext(file.filename)[0],
+            "title": os.path.splitext(filename)[0],
             "shared": shared
         })
         with open(meta_path, "w", encoding="utf-8") as f:
@@ -579,9 +613,12 @@ def create_app():
         try:
             if "subject_image" not in request.files:
                 return jsonify(error="Immagine soggetto mancante."), 400
+            file = request.files["subject_image"]
+            _, err = validate_upload(file)
+            if err:
+                return jsonify(error=err), 400
             subject = normalize_image(
-                Image.open(io.BytesIO(
-                    request.files["subject_image"].read())).convert("RGBA"))
+                Image.open(io.BytesIO(file.read())).convert("RGBA"))
             processed = remove(subject)
             buf = io.BytesIO()
             processed.save(buf, format="PNG")
@@ -598,9 +635,12 @@ def create_app():
             if "subject_data" not in request.files or "prompt" not in request.form:
                 return jsonify(error="Dati mancanti"), 400
             ensure_pipeline_is_loaded()
+            file = request.files["subject_data"]
+            _, err = validate_upload(file)
+            if err:
+                return jsonify(error=err), 400
             subject = normalize_image(
-                Image.open(io.BytesIO(
-                    request.files["subject_data"].read())).convert("RGB"))
+                Image.open(io.BytesIO(file.read())).convert("RGB"))
             mask = remove(subject, only_mask=True, post_process_mask=True)
             mask = ImageOps.invert(mask.convert("L"))
             canny_map = canny_detector(subject,
@@ -642,9 +682,12 @@ def create_app():
                                             "true").lower() == "true"
             denoise = float(request.form.get("tile_denoising_strength", 0.3))
             ensure_pipeline_is_loaded()
+            file = request.files["scene_image"]
+            _, err = validate_upload(file)
+            if err:
+                return jsonify(error=err), 400
             scene = normalize_image(
-                Image.open(io.BytesIO(
-                    request.files["scene_image"].read())).convert("RGB"))
+                Image.open(io.BytesIO(file.read())).convert("RGB"))
             if enable_hires:
                 model = RRDBNet(
                     num_in_ch=3,
@@ -728,9 +771,12 @@ def create_app():
                 }]
             }
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
-            resp = requests.post(url,
-                                 headers={"Content-Type": "application/json"},
-                                 json=payload)
+            resp = requests.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=10,
+            )
             resp.raise_for_status()
             result = resp.json()
             if result.get("candidates"):
@@ -738,6 +784,8 @@ def create_app():
                     "text"].strip('"')
                 return jsonify(enhanced_prompt=text)
             return jsonify(error="No prompt generated"), 500
+        except requests.Timeout:
+            return jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."), 504
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=f"Gemini error: {e}"), 500
@@ -774,9 +822,12 @@ def create_app():
                 }]
             }
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}"
-            resp = requests.post(url,
-                                 headers={"Content-Type": "application/json"},
-                                 json=payload)
+            resp = requests.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=10,
+            )
             resp.raise_for_status()
             result = resp.json()
             if result.get("candidates"):
@@ -784,6 +835,8 @@ def create_app():
                     "text"].strip('"')
                 return jsonify(enhanced_prompt=text)
             return jsonify(error="No prompt generated"), 500
+        except requests.Timeout:
+            return jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."), 504
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=f"Gemini error: {e}"), 500
@@ -795,9 +848,12 @@ def create_app():
             if "image" not in request.files:
                 return jsonify(error="Missing image"), 400
             ensure_yolo_parser_is_loaded()
+            file = request.files["image"]
+            _, err = validate_upload(file)
+            if err:
+                return jsonify(error=err), 400
             image_pil = normalize_image(
-                Image.open(io.BytesIO(
-                    request.files["image"].read())).convert("RGB"))
+                Image.open(io.BytesIO(file.read())).convert("RGB"))
             results = yolo_parser(image_pil)[0]
             return jsonify(parts=sorted(
                 list(
@@ -816,8 +872,59 @@ def create_app():
             if "image" not in request.files:
                 return jsonify(error="Dati mancanti"), 400
             prompts = json.loads(request.form.get("prompts"))
+<<<<<<< codex/integrate-task-queue-and-progress-feedback
             image_bytes = request.files["image"].read()
             result = process_generate_all_parts(image_bytes, prompts)
+=======
+            file = request.files["image"]
+            _, err = validate_upload(file)
+            if err:
+                return jsonify(error=err), 400
+            current_image = normalize_image(
+                Image.open(io.BytesIO(file.read())).convert("RGB"))
+
+            for part_name, prompt_text in prompts.items():
+                if not prompt_text:
+                    continue
+                mask = make_mask(current_image, (part_name, ))
+                if mask:
+                    w, h = current_image.size
+                    canny_map = canny_detector(current_image,
+                                               low_threshold=50,
+                                               high_threshold=150)
+                    if canny_map.size != current_image.size:
+                        canny_map = canny_map.resize(current_image.size,
+                                                     Image.Resampling.LANCZOS)
+                    canny_array = np.array(canny_map)
+                    mask_resized = mask.resize((w, h),
+                                               Image.Resampling.LANCZOS)
+                    mask_array = np.array(mask_resized.convert("L"))
+                    canny_array[mask_array > 128] = 0
+                    control_image = Image.fromarray(canny_array)
+                    if DEBUG_MODE:
+                        control_image.save(
+                            os.path.join(
+                                current_app.root_path,
+                                "temp",
+                                f"debug_control_{part_name}.png",
+                            ))
+                    current_image = pipe(
+                        prompt=prompt_text,
+                        image=current_image,
+                        mask_image=mask_resized,
+                        control_image=control_image,
+                        width=w,
+                        height=h,
+                        controlnet_conditioning_scale=0.8,
+                        num_inference_steps=CFG_DETAIL_STEPS,
+                        strength=1.0,
+                        guidance_scale=10,
+                    ).images[0]
+                else:
+                    logger.warning(
+                        "Maschera per '%s' non generata, step saltato.",
+                        part_name)
+>>>>>>> ip-adapter
             buf = io.BytesIO()
             result.save(buf, format="PNG")
             buf.seek(0)
@@ -845,9 +952,12 @@ def create_app():
             if "image" not in request.files:
                 return jsonify({"error": "Immagine mancante."}), 400
             ensure_face_analyzer_is_loaded()
+            file = request.files["image"]
+            _, err = validate_upload(file)
+            if err:
+                return jsonify({"error": err}), 400
             image_pil = normalize_image(
-                Image.open(io.BytesIO(
-                    request.files["image"].read())).convert("RGB"))
+                Image.open(io.BytesIO(file.read())).convert("RGB"))
             image_np = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
             faces = face_analyzer.get(image_np)
             return jsonify({
@@ -871,6 +981,7 @@ def create_app():
                 "source_face_image" not in request.files
             ):
                 return jsonify(error="Immagini mancanti."), 400
+<<<<<<< codex/integrate-task-queue-and-progress-feedback
             target_bytes = request.files["target_image_high_res"].read()
             source_bytes = request.files["source_face_image"].read()
             s_idx = int(request.form.get("source_face_index", 0))
@@ -880,6 +991,47 @@ def create_app():
             result.save(buf, format="PNG")
             buf.seek(0)
             return send_file(buf, mimetype="image/png")
+=======
+            ensure_face_analyzer_is_loaded()
+            ensure_face_swapper_is_loaded()
+            ensure_face_restorer_is_loaded()
+            tgt_file = request.files["target_image_high_res"]
+            src_file = request.files["source_face_image"]
+            for f in (tgt_file, src_file):
+                _, err = validate_upload(f)
+                if err:
+                    return jsonify(error=err), 400
+            target_pil = normalize_image(
+                Image.open(io.BytesIO(tgt_file.read())).convert("RGB"))
+            source_pil = normalize_image(
+                Image.open(io.BytesIO(src_file.read())).convert("RGB"))
+            target_img_cv = cv2.cvtColor(np.array(target_pil),
+                                         cv2.COLOR_RGB2BGR)
+            source_img_cv = cv2.cvtColor(np.array(source_pil),
+                                         cv2.COLOR_RGB2BGR)
+            target_faces = face_analyzer.get(target_img_cv)
+            source_faces = face_analyzer.get(source_img_cv)
+            if not source_faces or not target_faces:
+                return jsonify(error="Volti non trovati."), 400
+            source_face_index = int(request.form.get("source_face_index", 0))
+            target_face_index = int(request.form.get("target_face_index", 0))
+            result_img = face_swapper.get(
+                target_img_cv,
+                target_faces[target_face_index],
+                source_faces[source_face_index],
+                paste_back=True,
+            )
+            if face_restorer:
+                _, _, result_img = face_restorer.enhance(
+                    result_img,
+                    has_aligned=False,
+                    only_center_face=False,
+                    paste_back=True,
+                    weight=0.8,
+                )
+            _, buf = cv2.imencode(".png", result_img)
+            return send_file(io.BytesIO(buf.tobytes()), mimetype="image/png")
+>>>>>>> ip-adapter
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=str(e)), 500
