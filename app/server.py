@@ -12,6 +12,7 @@ import subprocess
 import gc
 import base64
 import torch
+from celery import Celery
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ from flask import (
     url_for,
     session,
 )
-from werkzeug.utils import safe_join, secure_filename
+from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from flask_wtf import CSRFProtect
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
@@ -50,6 +51,14 @@ from app.auth import auth_bp, login_required
 from .forms import SearchForm
 from .user_model import init_db
 from dotenv import load_dotenv
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- Inizializzazione Celery ---
+celery = Celery(__name__, broker='redis://localhost:6379/0', backend='redis://localhost:6379/0')
+
+# --- Costanti e Configurazioni Globali ---
 
 try:
     from segment_anything import sam_model_registry, SamPredictor
@@ -329,6 +338,16 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
 
     return final_mask
 
+# --- Definizione dei Task Asincroni di Celery ---
+@celery.task(bind=True)
+def generate_all_parts_task(self, prompts, image_bytes):
+    # La logica di questa funzione (chiama process_generate_all_parts, etc.)
+    pass
+
+@celery.task(bind=True)
+def final_swap_task(self, target_bytes, source_bytes, s_idx, t_idx):
+    # La logica di questa funzione (chiama process_final_swap, etc.)
+    pass
 
 def process_generate_all_parts(image_bytes, prompts, progress_cb=None):
     global yolo_parser, sam_predictor, pipe, canny_detector
@@ -442,6 +461,20 @@ def create_app():
     init_celery(app)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 
+    # Configurazione di Celery
+    app.config.update(
+        CELERY_BROKER_URL=os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
+        CELERY_RESULT_BACKEND=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+    )
+    celery.conf.update(app.config)
+
+    class ContextTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return super().__call__(*args, **kwargs)
+    celery.Task = ContextTask
+
+    # Inizializzazione estensioni
     csrf = CSRFProtect(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
     app.register_blueprint(meme_bp)
