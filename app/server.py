@@ -60,7 +60,7 @@ except ImportError:
     ffmpeg_path = None
 
 # === CONFIGURAZIONE GLOBALE ===
-DEBUG_MODE = True
+DEBUG_MODE = os.getenv("DEBUG_MODE", "0") == "1"
 CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
 CFG_DETAIL_STEPS = 18
 MAX_IMAGE_DIMENSION = 1280
