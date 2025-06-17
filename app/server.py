@@ -10,6 +10,7 @@ import json
 import uuid
 import subprocess
 import gc
+import base64
 import torch
 
 from insightface.app import FaceAnalysis
@@ -26,6 +27,7 @@ from PIL import Image, ImageDraw, ImageOps
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from ultralytics import YOLO
+from celery import Celery
 from flask import (
     Flask,
     request,
@@ -65,6 +67,9 @@ CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
 CFG_DETAIL_STEPS = 18
 MAX_IMAGE_DIMENSION = 1280
 
+# Celery instance (configured later in create_app)
+celery = Celery(__name__)
+
 # === GESTIONE MODELLI ===
 (
     face_analyzer,
@@ -81,6 +86,21 @@ def release_vram():
     print(" [VRAM] Rilascio della memoria cache della GPU...")
     gc.collect()
     torch.cuda.empty_cache()
+
+
+def init_celery(app):
+    celery.conf.update(
+        broker_url=app.config["CELERY_BROKER_URL"],
+        result_backend=app.config["CELERY_RESULT_BACKEND"],
+    )
+
+    class ContextTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return super().__call__(*args, **kwargs)
+
+    celery.Task = ContextTask
+    return celery
 
 
 # --- FUNZIONI DI CARICAMENTO MODELLI ---
@@ -293,11 +313,116 @@ def make_mask(pil_img, parts_to_mask, conf_threshold=0.20):
     return final_mask
 
 
+def process_generate_all_parts(image_bytes, prompts, progress_cb=None):
+    global yolo_parser, sam_predictor, pipe, canny_detector
+    ensure_pipeline_is_loaded()
+    ensure_yolo_parser_is_loaded()
+    ensure_sam_predictor_is_loaded()
+    current_image = normalize_image(Image.open(io.BytesIO(image_bytes)).convert("RGB"))
+    valid_prompts = [p for p in prompts.values() if p]
+    total = len(valid_prompts) or 1
+    completed = 0
+    for part_name, prompt_text in prompts.items():
+        if not prompt_text:
+            continue
+        mask = make_mask(current_image, (part_name,))
+        if mask:
+            w, h = current_image.size
+            canny_map = canny_detector(current_image, low_threshold=50, high_threshold=150)
+            if canny_map.size != current_image.size:
+                canny_map = canny_map.resize(current_image.size, Image.Resampling.LANCZOS)
+            canny_array = np.array(canny_map)
+            mask_resized = mask.resize((w, h), Image.Resampling.LANCZOS)
+            mask_array = np.array(mask_resized.convert("L"))
+            canny_array[mask_array > 128] = 0
+            control_image = Image.fromarray(canny_array)
+            if DEBUG_MODE:
+                control_image.save(os.path.join(current_app.root_path, "temp", f"debug_control_{part_name}.png"))
+            current_image = pipe(
+                prompt=prompt_text,
+                image=current_image,
+                mask_image=mask_resized,
+                control_image=control_image,
+                width=w,
+                height=h,
+                controlnet_conditioning_scale=0.8,
+                num_inference_steps=CFG_DETAIL_STEPS,
+                strength=1.0,
+                guidance_scale=10,
+            ).images[0]
+        completed += 1
+        if progress_cb:
+            progress_cb(int(completed / total * 100))
+    return current_image
+
+
+def process_final_swap(target_bytes, source_bytes, source_idx, target_idx, progress_cb=None):
+    global face_analyzer, face_swapper, face_restorer
+    ensure_face_analyzer_is_loaded()
+    ensure_face_swapper_is_loaded()
+    ensure_face_restorer_is_loaded()
+    target_pil = normalize_image(Image.open(io.BytesIO(target_bytes)).convert("RGB"))
+    source_pil = normalize_image(Image.open(io.BytesIO(source_bytes)).convert("RGB"))
+    target_cv = cv2.cvtColor(np.array(target_pil), cv2.COLOR_RGB2BGR)
+    source_cv = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR)
+    target_faces = face_analyzer.get(target_cv)
+    source_faces = face_analyzer.get(source_cv)
+    if not target_faces or not source_faces:
+        raise ValueError("Volti non trovati.")
+    result_img = face_swapper.get(
+        target_cv,
+        target_faces[target_idx],
+        source_faces[source_idx],
+        paste_back=True,
+    )
+    if progress_cb:
+        progress_cb(50)
+    if face_restorer:
+        _, _, result_img = face_restorer.enhance(
+            result_img,
+            has_aligned=False,
+            only_center_face=False,
+            paste_back=True,
+            weight=0.8,
+        )
+    if progress_cb:
+        progress_cb(100)
+    return Image.fromarray(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
+
+
+@celery.task(bind=True)
+def generate_all_parts_task(self, prompts, image_bytes):
+    def update(p):
+        self.update_state(state="PROGRESS", meta={"progress": p})
+    img = process_generate_all_parts(image_bytes, prompts, update)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    encoded = base64.b64encode(buf.getvalue()).decode()
+    release_vram()
+    return {"progress": 100, "data": encoded}
+
+
+@celery.task(bind=True)
+def final_swap_task(self, target_bytes, source_bytes, s_idx, t_idx):
+    def update(p):
+        self.update_state(state="PROGRESS", meta={"progress": p})
+    img = process_final_swap(target_bytes, source_bytes, s_idx, t_idx, update)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    encoded = base64.b64encode(buf.getvalue()).decode()
+    release_vram()
+    return {"progress": 100, "data": encoded}
+
+
 def create_app():
     app = Flask(__name__)
     load_dotenv()
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
+    app.config.setdefault("CELERY_BROKER_URL", os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"))
+    app.config.setdefault("CELERY_RESULT_BACKEND", os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"))
+
+    init_celery(app)
 
     csrf = CSRFProtect(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
@@ -687,63 +812,14 @@ def create_app():
 
     @app.route("/generate_all_parts", methods=["POST"])
     def generate_all_parts():
-        global yolo_parser, sam_predictor, pipe, canny_detector
         try:
             if "image" not in request.files:
                 return jsonify(error="Dati mancanti"), 400
-
-            ensure_pipeline_is_loaded()
-            ensure_yolo_parser_is_loaded()
-            ensure_sam_predictor_is_loaded()
-
             prompts = json.loads(request.form.get("prompts"))
-            current_image = normalize_image(
-                Image.open(io.BytesIO(
-                    request.files["image"].read())).convert("RGB"))
-
-            for part_name, prompt_text in prompts.items():
-                if not prompt_text:
-                    continue
-                mask = make_mask(current_image, (part_name, ))
-                if mask:
-                    w, h = current_image.size
-                    canny_map = canny_detector(current_image,
-                                               low_threshold=50,
-                                               high_threshold=150)
-                    if canny_map.size != current_image.size:
-                        canny_map = canny_map.resize(current_image.size,
-                                                     Image.Resampling.LANCZOS)
-                    canny_array = np.array(canny_map)
-                    mask_resized = mask.resize((w, h),
-                                               Image.Resampling.LANCZOS)
-                    mask_array = np.array(mask_resized.convert("L"))
-                    canny_array[mask_array > 128] = 0
-                    control_image = Image.fromarray(canny_array)
-                    if DEBUG_MODE:
-                        control_image.save(
-                            os.path.join(
-                                current_app.root_path,
-                                "temp",
-                                f"debug_control_{part_name}.png",
-                            ))
-                    current_image = pipe(
-                        prompt=prompt_text,
-                        image=current_image,
-                        mask_image=mask_resized,
-                        control_image=control_image,
-                        width=w,
-                        height=h,
-                        controlnet_conditioning_scale=0.8,
-                        num_inference_steps=CFG_DETAIL_STEPS,
-                        strength=1.0,
-                        guidance_scale=10,
-                    ).images[0]
-                else:
-                    print(
-                        f" [ATTENZIONE] Maschera per '{part_name}' non generata, step saltato."
-                    )
+            image_bytes = request.files["image"].read()
+            result = process_generate_all_parts(image_bytes, prompts)
             buf = io.BytesIO()
-            current_image.save(buf, format="PNG")
+            result.save(buf, format="PNG")
             buf.seek(0)
             return send_file(buf, mimetype="image/png")
         except Exception as e:
@@ -752,6 +828,15 @@ def create_app():
         finally:
             yolo_parser, sam_predictor, pipe, canny_detector = (None, ) * 4
             release_vram()
+
+    @app.route("/async/generate_all_parts", methods=["POST"])
+    def async_generate_all_parts():
+        if "image" not in request.files:
+            return jsonify(error="Dati mancanti"), 400
+        prompts = json.loads(request.form.get("prompts"))
+        image_bytes = request.files["image"].read()
+        task = generate_all_parts_task.apply_async(args=[prompts, image_bytes])
+        return jsonify(task_id=task.id), 202
 
     @app.route("/detect_faces", methods=["POST"])
     def detect_faces():
@@ -780,55 +865,41 @@ def create_app():
 
     @app.route("/final_swap", methods=["POST"])
     def final_swap():
-        global face_analyzer, face_swapper, face_restorer
         try:
-            if ("target_image_high_res" not in request.files
-                    or "source_face_image" not in request.files):
+            if (
+                "target_image_high_res" not in request.files or
+                "source_face_image" not in request.files
+            ):
                 return jsonify(error="Immagini mancanti."), 400
-            ensure_face_analyzer_is_loaded()
-            ensure_face_swapper_is_loaded()
-            ensure_face_restorer_is_loaded()
-            target_pil = normalize_image(
-                Image.open(
-                    io.BytesIO(request.files["target_image_high_res"].read())).
-                convert("RGB"))
-            source_pil = normalize_image(
-                Image.open(
-                    io.BytesIO(
-                        request.files["source_face_image"].read())).convert(
-                            "RGB"))
-            target_img_cv = cv2.cvtColor(np.array(target_pil),
-                                         cv2.COLOR_RGB2BGR)
-            source_img_cv = cv2.cvtColor(np.array(source_pil),
-                                         cv2.COLOR_RGB2BGR)
-            target_faces = face_analyzer.get(target_img_cv)
-            source_faces = face_analyzer.get(source_img_cv)
-            if not source_faces or not target_faces:
-                return jsonify(error="Volti non trovati."), 400
-            source_face_index = int(request.form.get("source_face_index", 0))
-            target_face_index = int(request.form.get("target_face_index", 0))
-            result_img = face_swapper.get(
-                target_img_cv,
-                target_faces[target_face_index],
-                source_faces[source_face_index],
-                paste_back=True,
-            )
-            if face_restorer:
-                _, _, result_img = face_restorer.enhance(
-                    result_img,
-                    has_aligned=False,
-                    only_center_face=False,
-                    paste_back=True,
-                    weight=0.8,
-                )
-            _, buf = cv2.imencode(".png", result_img)
-            return send_file(io.BytesIO(buf.tobytes()), mimetype="image/png")
+            target_bytes = request.files["target_image_high_res"].read()
+            source_bytes = request.files["source_face_image"].read()
+            s_idx = int(request.form.get("source_face_index", 0))
+            t_idx = int(request.form.get("target_face_index", 0))
+            result = process_final_swap(target_bytes, source_bytes, s_idx, t_idx)
+            buf = io.BytesIO()
+            result.save(buf, format="PNG")
+            buf.seek(0)
+            return send_file(buf, mimetype="image/png")
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=str(e)), 500
         finally:
             face_analyzer, face_swapper, face_restorer = (None, ) * 3
             release_vram()
+
+    @app.route("/async/final_swap", methods=["POST"])
+    def async_final_swap():
+        if (
+            "target_image_high_res" not in request.files or
+            "source_face_image" not in request.files
+        ):
+            return jsonify(error="Immagini mancanti."), 400
+        target_bytes = request.files["target_image_high_res"].read()
+        source_bytes = request.files["source_face_image"].read()
+        s_idx = int(request.form.get("source_face_index", 0))
+        t_idx = int(request.form.get("target_face_index", 0))
+        task = final_swap_task.apply_async(args=[target_bytes, source_bytes, s_idx, t_idx])
+        return jsonify(task_id=task.id), 202
 
     @app.route("/save_result_video", methods=["POST"])
     def save_result_video():
@@ -859,6 +930,17 @@ def create_app():
         except Exception as e:
             logging.exception("Errore conversione video")
             return jsonify(error=str(e)), 500
+
+    @app.route("/task_status/<task_id>")
+    def task_status(task_id):
+        task = celery.AsyncResult(task_id)
+        if task.state == "PENDING":
+            return jsonify(state="PENDING", progress=0)
+        if task.state == "PROGRESS":
+            return jsonify(state="PROGRESS", progress=task.info.get("progress", 0))
+        if task.state == "SUCCESS":
+            return jsonify(state="SUCCESS", progress=100, result=task.result)
+        return jsonify(state=task.state, progress=task.info.get("progress", 0), error=str(task.info))
 
     @app.after_request
     def add_pna_header(response):

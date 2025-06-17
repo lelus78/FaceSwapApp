@@ -66,6 +66,26 @@ export function finishProgressBar() {
   }, 200);
 }
 
+export async function pollTask(taskId, title) {
+  startProgressBar(title, 60);
+  while (true) {
+    const status = await api.getTaskStatus(taskId);
+    const p = status.progress || 0;
+    dom.progressBar.style.width = `${p}%`;
+    dom.progressText.textContent = `${p}%`;
+    if (status.state === 'SUCCESS') {
+      finishProgressBar();
+      const resp = await fetch(`data:image/png;base64,${status.result.data}`);
+      return resp.blob();
+    }
+    if (status.state === 'FAILURE') {
+      finishProgressBar();
+      throw new Error(status.error || 'Task failed');
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
 export function closeModal(id) {
   const modal = document.getElementById(id);
   if (modal) modal.style.display = 'none';
@@ -174,9 +194,9 @@ export async function handleUpscaleAndDetail() {
 export async function handlePerformSwap() {
   const targetImg = state.finalImageWithSwap || state.upscaledImageBlob;
   if (state.selectedSourceIndex < 0 || state.selectedTargetIndex < 0 || !targetImg) return;
-  startProgressBar('Step 4: Face Swap...', 10);
   try {
-    state.finalImageWithSwap = await api.performSwap(targetImg, state.sourceImageFile, state.selectedSourceIndex, state.selectedTargetIndex);
+    const { task_id } = await api.finalSwapAsync(targetImg, state.sourceImageFile, state.selectedSourceIndex, state.selectedTargetIndex);
+    state.finalImageWithSwap = await pollTask(task_id, 'Step 4: Face Swap...');
     displayImage(state.finalImageWithSwap, dom.resultImageDisplay, () => {
         detectAndDrawFaces(state.finalImageWithSwap, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
     });
@@ -185,8 +205,6 @@ export async function handlePerformSwap() {
     dom.swapBtn.disabled = true;
   } catch (err) {
     showError('Errore Face Swap', err.message);
-  } finally {
-    finishProgressBar();
   }
 }
 
@@ -250,17 +268,16 @@ export async function handleGenerateAll() {
     }
   }
   if (Object.keys(prompts).length === 0) return showError('Nessun Prompt', 'Scrivi una descrizione per almeno una parte.');
-  startProgressBar('🎨 Generazione Multi-Parte in corso...', 120);
   dom.generateAllBtn.disabled = true;
   try {
-    const resultBlob = await api.generateAllParts(imageToInpaint, prompts);
+    const { task_id } = await api.generateAllPartsAsync(imageToInpaint, prompts);
+    const resultBlob = await pollTask(task_id, '🎨 Generazione Multi-Parte in corso...');
     state.finalImageWithSwap = resultBlob;
     displayImage(resultBlob, dom.resultImageDisplay);
     detectAndDrawFaces(resultBlob, dom.resultImageDisplay, dom.targetFaceBoxesContainer, state.targetFaces, 'target');
   } catch (err) {
     showError('Errore Generazione', err.message);
   } finally {
-    finishProgressBar();
     dom.generateAllBtn.disabled = false;
     dom.dynamicPromptsContainer.querySelectorAll('.prompt-input').forEach(inp => inp.value = '');
   }
