@@ -164,6 +164,8 @@
 .toggle-bg {
     position: relative;
     transition: background-color 0.2s;
+    display: inline-block;
+    vertical-align: middle;
 }
 .toggle-checkbox:checked + .toggle-bg {
     background-color: var(--accent);
@@ -183,6 +185,7 @@
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+    box-sizing: border-box; /* <<<<<<<<<<< AGGIUNTA CHIAVE QUI !!! */
 }
 
 .face-box:hover {
