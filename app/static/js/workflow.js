@@ -245,13 +245,11 @@ export async function handleInstallModel() {
   if (!url) return showError('URL mancante', 'Inserisci un link valido da Civitai.');
   closeModal('model-modal');
   try {
-    const res = await fetch('/api/models/download', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Impossibile avviare il download');
+    // La logica della chiamata è ora nascosta dentro api.js
+    const data = await api.downloadModel(url); 
+    
+    if (!data.task_id) throw new Error('Risposta del server non valida.');
+    
     await pollGenericTask(data.task_id, '📥 Download modello in corso...');
     await loadAvailableModels();
     showToast('Modello installato');

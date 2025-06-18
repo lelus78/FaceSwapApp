@@ -40,6 +40,17 @@ async function blobToBase64(blob) {
     });
 }
 
+export async function downloadModel(civitaiUrl) {
+  const response = await csrfFetch(`${BASE_URL}/api/models/download`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: civitaiUrl })
+  });
+  // handleResponse è già definito nel tuo api.js e gestisce gli errori
+  await handleResponse(response);
+  return response.json();
+}
+
 export async function getStickers() {
     const response = await csrfFetch(`${BASE_URL}/api/stickers`);
     await handleResponse(response);

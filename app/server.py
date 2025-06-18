@@ -1,6 +1,6 @@
+import sys
+import time
 import os
-import cv2
-import numpy as np
 import io
 import logging
 import requests
@@ -16,6 +16,8 @@ import shutil
 import tempfile
 import re
 from threading import Lock
+import numpy as np
+import cv2
 from celery import Celery
 from PIL import Image, ImageDraw, ImageOps
 
@@ -32,6 +34,7 @@ import insightface.model_zoo
 from gfpgan import GFPGANer
 from rembg import remove
 from diffusers import (
+    StableDiffusionXLPipeline,
     StableDiffusionXLControlNetInpaintPipeline,
     ControlNetModel,
     DPMSolverMultistepScheduler,
@@ -583,58 +586,96 @@ def final_swap_task(self, target_bytes, source_bytes, s_idx, t_idx):
 
 @celery.task(bind=True)
 def download_and_install_model_task(self, civitai_url):
+    """
+    Task per scaricare e installare un modello da Civitai, mostrando la velocità di download.
+    """
     def update(p, status):
         self.update_state(state="PROGRESS", meta={"progress": p, "status": status})
 
     try:
+        update(0, "Fetching model info...")
+        logger.info(f"Inizio download per URL: {civitai_url}")
+        
         match = re.search(r"/models/(\d+)", civitai_url)
         if not match:
-            raise ValueError("URL Civitai non valido")
+            raise ValueError("URL Civitai non valido. Assicurati di usare il link della pagina del modello.")
+        
         model_id = match.group(1)
-        update(0, "Fetching metadata")
-        info = requests.get(f"https://civitai.com/api/v1/models/{model_id}").json()
+        api_url = f"https://civitai.com/api/v1/models/{model_id}"
+        
+        response = requests.get(api_url, timeout=15)
+        response.raise_for_status()
+        info = response.json()
+
         ver = info.get("modelVersions", [{}])[0]
-        file_info = next(
-            (
-                f
-                for f in ver.get("files", [])
-                if f.get("downloadUrl", "").endswith(".safetensors")
-            ),
-            None,
-        )
-        if not file_info:
-            raise ValueError("File .safetensors non trovato")
+        file_info = next((f for f in ver.get("files", []) if f.get("name", "").endswith(".safetensors")), None)
+
+        if not file_info or not file_info.get("downloadUrl"):
+            raise ValueError("Nessun file .safetensors scaricabile trovato per questo modello su Civitai.")
+
         download_url = file_info["downloadUrl"]
-        filename = os.path.basename(download_url)
-        base_name = os.path.splitext(filename)[0]
-        model_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", base_name).lower()
+        original_filename = file_info["name"]
+        
+        base_name = os.path.splitext(original_filename)[0]
+        safe_model_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", base_name).strip("-").lower() or f"model-{model_id}"
+        
+        logger.info(f"Trovato modello '{safe_model_name}'. Inizio download...")
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            temp_path = os.path.join(tmpdir, filename)
-            with requests.get(download_url, stream=True) as r:
+            temp_safetensors_path = os.path.join(tmpdir, "model.safetensors")
+            
+            update(5, "Starting download...")
+            with requests.get(download_url, stream=True, timeout=30) as r:
                 r.raise_for_status()
-                total = int(r.headers.get("content-length", 0))
-                downloaded = 0
-                with open(temp_path, "wb") as f:
+                total_size = int(r.headers.get('content-length', 0))
+                
+                start_time = time.time()
+                last_update_time = start_time
+                downloaded_since_last_update = 0
+                
+                with open(temp_safetensors_path, 'wb') as f:
+                    downloaded_size = 0
                     for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total:
-                                update(int(downloaded / total * 50), "Downloading")
+                        f.write(chunk)
+                        chunk_size = len(chunk)
+                        downloaded_size += chunk_size
+                        downloaded_since_last_update += chunk_size
+                        
+                        current_time = time.time()
+                        # Aggiorna lo stato ogni secondo per non sovraccaricare
+                        if current_time - last_update_time >= 1:
+                            progress = 5 + int((downloaded_size / total_size) * 90) if total_size > 0 else 5
+                            
+                            elapsed_time = current_time - last_update_time
+                            speed = downloaded_since_last_update / elapsed_time / 1024 # KB/s
+                            status_msg = f"Downloading... {speed:.1f} KB/s"
+                            
+                            update(progress, status_msg)
+                            last_update_time = current_time
+                            downloaded_since_last_update = 0
+            
+            logger.info("Download completato. Inizio conversione...")
+            update(98, "Converting model...")
+            
+            # Comando che usa l'interprete Python corretto
+            command = [sys.executable, "convert_safetensor.py", "--input", temp_safetensors_path, "--output", safe_model_name]
+            result = subprocess.run(command, capture_output=True, text=True, check=False)
 
-            update(55, "Converting")
-            pipeline = StableDiffusionXLPipeline.from_single_file(
-                temp_path, torch_dtype=torch.float16, use_safetensors=True
-            )
-            out_dir = os.path.join("models", "checkpoints", model_name)
-            pipeline.save_pretrained(out_dir)
+            if result.returncode != 0:
+                error_message = f"Conversione fallita: {result.stderr}"
+                logger.error(f"Errore dallo script di conversione:\n{error_message}")
+                raise Exception(error_message)
 
+        logger.info("Conversione completata con successo.")
         release_vram()
-        return {"progress": 100, "model_name": model_name}
+        update(100, "Completed!")
+        return {"progress": 100, "status": "Completed!", "model_name": safe_model_name}
+
     except Exception as e:
-        logger.exception("Errore installazione modello")
-        raise e
+        error_str = str(e)
+        logger.exception("Errore critico durante l'installazione del modello")
+        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': error_str})
+        raise Exception(error_str)
 
 
 # --- FACTORY DELL'APPLICAZIONE FLASK ---

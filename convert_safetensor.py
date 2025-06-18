@@ -1,52 +1,41 @@
-# ===================================================================================
-# === SCRIPT PER CONVERTIRE UN CHECKPOINT .safetensors IN FORMATO DIFFUSERS ===
-# ===================================================================================
+# Contenuto aggiornato per convert_safetensor.py
 
 import torch
 from diffusers import StableDiffusionXLPipeline
 import os
 import logging
+import argparse
 
-# --- IMPOSTAZIONI GIÀ CONFIGURATE PER TE ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# 1. Percorso del file .safetensors che hai scaricato.
-#    Assicurati che sia in una cartella 'downloads'.
-single_file_path = os.path.join(
-    "downloads", "sdxlYamersRealistic5_v5Rundiffusion.safetensors")
+def convert_model(input_file, output_name):
+    output_directory_path = os.path.join("models", "checkpoints", output_name)
 
-# 2. Nome della cartella di output del modello convertito.
-output_model_name = "sdxl-yamers-realistic5-v5Rundiffusion"
+    if not os.path.exists(input_file):
+        logging.error("[ERRORE] File di input non trovato: %s", input_file)
+        raise FileNotFoundError(f"Input file not found: {input_file}")
 
-# --- FINE IMPOSTAZIONI ---
+    if os.path.exists(output_directory_path):
+        logging.warning("[ATTENZIONE] La cartella di output '%s' esiste già. Potrebbe essere sovrascritta.", output_directory_path)
+    
+    os.makedirs(output_directory_path, exist_ok=True)
 
-# Costruisce il percorso completo per la cartella di output
-output_directory_path = os.path.join("models", "checkpoints",
-                                     output_model_name)
+    logging.info("[*] Caricamento del modello da: %s", input_file)
+    try:
+        pipeline = StableDiffusionXLPipeline.from_single_file(
+            input_file, torch_dtype=torch.float16, use_safetensors=True
+        )
+        logging.info("[*] Salvataggio del modello in: %s", output_directory_path)
+        pipeline.save_pretrained(output_directory_path, safe_serialization=True)
+        logging.info("\n[SUCCESSO!] Conversione completata per il modello '%s'.", output_name)
+    except Exception as e:
+        logging.error("Errore durante la conversione del modello: %s", e)
+        raise
 
-logging.basicConfig(level=logging.INFO)
-
-# Controlla se il file di input esiste
-if not os.path.exists(single_file_path):
-    logging.error("[ERRORE] File non trovato: %s", single_file_path)
-    logging.error(
-        "Per favore, scarica il modello da Civitai e mettilo nella cartella 'downloads'."
-    )
-else:
-    logging.info("[*] Caricamento del modello dal file singolo: %s...",
-                 single_file_path)
-
-    pipeline = StableDiffusionXLPipeline.from_single_file(
-        single_file_path, torch_dtype=torch.float16, use_safetensors=True)
-
-    logging.info(
-        "[*] Salvataggio del modello nel formato 'diffusers' in: %s...",
-        output_directory_path,
-    )
-
-    pipeline.save_pretrained(output_directory_path)
-
-    logging.info("\n[SUCCESSO!] Conversione completata.")
-    logging.info(
-        "Ora puoi usare il seguente nome nel tuo server.py: '%s'",
-        output_model_name,
-    )
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Convertitore da .safetensors a Diffusers.")
+    parser.add_argument("--input", required=True, help="Percorso del file .safetensors di input.")
+    parser.add_argument("--output", required=True, help="Nome della cartella di output del modello (non il percorso completo).")
+    
+    args = parser.parse_args()
+    convert_model(args.input, args.output)
