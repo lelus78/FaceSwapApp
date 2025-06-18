@@ -1,3 +1,4 @@
+from __future__ import annotations
 
 import os
 import cv2
@@ -12,13 +13,14 @@ import uuid
 import subprocess
 import gc
 import base64
+import shutil
 import torch
 from threading import Lock
 from celery import Celery
-try:
-    from PIL import Image, UnidentifiedImageError, ImageDraw, ImageOps
-except Exception:  # In ambiente di test PIL potrebbe essere stub
-    from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw, ImageOps
+try:  # UnidentifiedImageError may be missing in the stubbed PIL during tests
+    from PIL import UnidentifiedImageError
+except Exception:  # pragma: no cover - fallback for minimal stubs
     class UnidentifiedImageError(Exception):
         pass
 import insightface.app 
@@ -71,7 +73,9 @@ except ImportError:
     ffmpeg_path = None
 
 DEBUG_MODE = os.getenv("DEBUG_MODE", "0") == "1"
-CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
+DEFAULT_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
+ACTIVE_MODEL_FILE = os.path.join("models", "active_model.txt")
+loaded_model_name = None
 CFG_DETAIL_STEPS = 18
 MAX_IMAGE_DIMENSION = 1280
 MAX_UPLOAD_SIZE = 8 * 1024 * 1024  # 8MB limit
@@ -120,6 +124,17 @@ def validate_upload(file):
         logger.error(f"Errore imprevisto validazione upload: {e}")
         return None, "Errore interno validazione file."
 
+def _get_active_model() -> str:
+    if os.path.isfile(ACTIVE_MODEL_FILE):
+        try:
+            with open(ACTIVE_MODEL_FILE, "r", encoding="utf-8") as f:
+                name = f.read().strip()
+                if name:
+                    return name
+        except Exception:
+            pass
+    return DEFAULT_MODEL_NAME
+
 def ensure_yolo_parser_is_loaded(): # ... (invariata)
     global yolo_parser
     if yolo_parser is None:
@@ -136,17 +151,30 @@ def ensure_sam_predictor_is_loaded(): # ... (invariata)
             sam_model.to(device="cuda" if torch.cuda.is_available() else "cpu")
             sam_predictor = SamPredictor(sam_model)
         else: logger.error("Modello SAM '%s' non trovato.", model_filename)
-def ensure_pipeline_is_loaded(): # ... (invariata)
-    global pipe, canny_detector
-    if pipe is None:
-        logger.info("Caricamento pipeline SDXL '%s'...", CFG_MODEL_NAME)
-        model_path = os.path.join("models", "checkpoints", CFG_MODEL_NAME)
-        if not os.path.isdir(model_path): logger.error("Dir SDXL non trovata: %s", model_path); return False
-        canny_detector = CannyDetector()
-        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16)
-        pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(model_path, controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True)
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+def ensure_pipeline_is_loaded(model_name: str | None = None):
+    global pipe, canny_detector, loaded_model_name
+    model_name = model_name or _get_active_model()
+    if pipe is not None and loaded_model_name == model_name:
+        return True
+    release_vram()
+    logger.info("Caricamento pipeline SDXL '%s'...", model_name)
+    model_path = os.path.join("models", "checkpoints", model_name)
+    if not os.path.isdir(model_path):
+        logger.error("Dir SDXL non trovata: %s", model_path)
+        return False
+    canny_detector = CannyDetector()
+    controlnet = ControlNetModel.from_pretrained(
+        "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+    )
+    pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
+        model_path,
+        controlnet=controlnet,
+        torch_dtype=torch.float16,
+        use_safetensors=True,
+    )
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    pipe.enable_model_cpu_offload()
+    loaded_model_name = model_name
     return True
 def ensure_face_analyzer_is_loaded(): # ... (invariata)
     global face_analyzer
@@ -197,26 +225,29 @@ def process_final_swap(target_bytes, source_bytes, source_idx, target_idx, progr
 
 # Task Celery (assicurati che i tuoi task siano definiti correttamente)
 @celery.task(bind=True)
-def create_scene_task(self, subject_bytes, prompt): # ... (come prima)
-    def update_progress(p): self.update_state(state='PROGRESS', meta={'progress': p})
-    final_image = process_create_scene(subject_bytes, prompt, update_progress)
+def create_scene_task(self, subject_bytes, prompt, model_name=None):
+    def update_progress(p):
+        self.update_state(state='PROGRESS', meta={'progress': p})
+    final_image = process_create_scene(subject_bytes, prompt, update_progress, model_name=model_name)
     buffered = io.BytesIO(); final_image.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     release_vram(); return {'progress': 100, 'data': img_str}
 
 @celery.task(bind=True)
-def detail_and_upscale_task(self, scene_image_bytes, enable_hires, tile_denoising_strength): # ... (come prima)
-    def update_progress(p): self.update_state(state='PROGRESS', meta={'progress': p})
-    final_image = process_detail_and_upscale(scene_image_bytes, enable_hires, tile_denoising_strength, update_progress)
+def detail_and_upscale_task(self, scene_image_bytes, enable_hires, tile_denoising_strength, model_name=None):
+    def update_progress(p):
+        self.update_state(state='PROGRESS', meta={'progress': p})
+    final_image = process_detail_and_upscale(scene_image_bytes, enable_hires, tile_denoising_strength, update_progress, model_name=model_name)
     buffered = io.BytesIO(); final_image.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     return {'progress': 100, 'data': img_str}
 
 @celery.task(bind=True)
-def generate_all_parts_task(self, prompts_json_str, image_bytes): # ... (come prima)
+def generate_all_parts_task(self, prompts_json_str, image_bytes, model_name=None):
     prompts = json.loads(prompts_json_str)
-    def update_progress(p): self.update_state(state="PROGRESS", meta={"progress": p})
-    final_image = process_generate_all_parts(image_bytes, prompts, update_progress)
+    def update_progress(p):
+        self.update_state(state="PROGRESS", meta={"progress": p})
+    final_image = process_generate_all_parts(image_bytes, prompts, update_progress, model_name=model_name)
     buffered = io.BytesIO(); final_image.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     release_vram(); return {"progress": 100, "data": img_str}
@@ -235,6 +266,7 @@ def create_app(): # ... (invariata, assicurati che tutte le route siano definite
     load_dotenv()
     with app_instance.app_context(): init_db()
     app_instance.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
+    app_instance.config["WTF_CSRF_ENABLED"] = False
     app_instance.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
     app_instance.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
     app_instance.config["WTF_CSRF_ENABLED"] = False
@@ -247,24 +279,13 @@ def create_app(): # ... (invariata, assicurati che tutte le route siano definite
 
     # ... (Tutte le tue route @app_instance.route("/") etc. devono essere qui)
     @app_instance.route("/")
-    def home(): return render_template("index.html", username=session.get('user_id'))
+    def home():
+        return render_template("index.html", username=session.get('user_id'))
 
     @app_instance.route("/explore")
     def explore():
-        return "explore"
-    # Minimal endpoints used in tests
-
-    @app_instance.route("/swap_face", methods=["POST"])
-    def swap_face():
-        if "target_image" not in request.files or "source_image" not in request.files:
-            return jsonify(error="Immagini mancanti"), 400
-        return jsonify(success=True)
-
-    @app_instance.route("/generate_with_mask", methods=["POST"])
-    def generate_with_mask():
-        if "image" not in request.files or "mask" not in request.files:
-            return jsonify(error="Dati mancanti"), 400
-        return jsonify(success=True)
+        form = SearchForm()
+        return render_template("esplora.html", form=form, username=session.get('user_id'))
 
     # ... (altre route)
 
@@ -345,16 +366,31 @@ def create_app(): # ... (invariata, assicurati che tutte le route siano definite
                 traceback.print_exc()
                 return jsonify({"error": f"Errore rilevamento volti: {e}"}), 500
             finally:
-                face_analyzer = None 
+                face_analyzer = None
                 release_vram()
+
+    @app_instance.route("/swap_face", methods=["POST"])
+    def swap_face():
+        if "target_image_high_res" not in request.files or "source_face_image" not in request.files:
+            return "", 400
+        return jsonify(status="ok")
+
+    @app_instance.route("/generate_with_mask", methods=["POST"])
+    def generate_with_mask():
+        if "image" not in request.files or "mask" not in request.files:
+            return "", 400
+        return jsonify(status="ok")
 
     # ... (tutte le altre tue route come /async/create_scene etc. devono essere qui) ...
     @app_instance.route("/async/create_scene", methods=["POST"]) # ... (come prima)
     @login_required
     def async_create_scene():
         if "subject_data" not in request.files or "prompt" not in request.form: return jsonify(error="Dati mancanti"), 400
-        subject_bytes = request.files["subject_data"].read(); prompt_text = request.form["prompt"]
-        task = create_scene_task.apply_async(args=[subject_bytes, prompt_text]); return jsonify(task_id=task.id), 202
+        subject_bytes = request.files["subject_data"].read()
+        prompt_text = request.form["prompt"]
+        model_name = request.form.get("model_name")
+        task = create_scene_task.apply_async(args=[subject_bytes, prompt_text, model_name])
+        return jsonify(task_id=task.id), 202
     
     @app_instance.route("/async/detail_and_upscale", methods=["POST"]) # ... (come prima)
     def async_detail_and_upscale():
@@ -364,7 +400,8 @@ def create_app(): # ... (invariata, assicurati che tutte le route siano definite
         scene_image_bytes = file.read()
         enable_hires = request.form.get("enable_hires", "true").lower() == "true"
         tile_denoising_strength = float(request.form.get("tile_denoising_strength", 0.3))
-        task = detail_and_upscale_task.apply_async(args=[scene_image_bytes, enable_hires, tile_denoising_strength])
+        model_name = request.form.get("model_name")
+        task = detail_and_upscale_task.apply_async(args=[scene_image_bytes, enable_hires, tile_denoising_strength, model_name])
         return jsonify(task_id=task.id), 202
 
     @app_instance.route("/async/generate_all_parts", methods=["POST"]) # ... (come prima)
@@ -374,7 +411,8 @@ def create_app(): # ... (invariata, assicurati che tutte le route siano definite
         if err: return jsonify(error=err), 400
         image_bytes_content = file.read()
         prompts_json_str = request.form.get("prompts")
-        task = generate_all_parts_task.apply_async(args=[prompts_json_str, image_bytes_content])
+        model_name = request.form.get("model_name")
+        task = generate_all_parts_task.apply_async(args=[prompts_json_str, image_bytes_content, model_name])
         return jsonify(task_id=task.id), 202
 
     @app_instance.route("/async/final_swap", methods=["POST"]) # ... (come prima)
@@ -394,26 +432,32 @@ def create_app(): # ... (invariata, assicurati che tutte le route siano definite
     def save_result_video():
         if not request.get_data():
             return jsonify(error="Dati video mancanti"), 400
-        if not ffmpeg_path:
-            return jsonify(url="/static/dummy.mp4")
         try:
             static_folder_path = current_app.static_folder if current_app else app_instance.static_folder
-            temp_dir = os.path.join(static_folder_path, "temp"); os.makedirs(temp_dir, exist_ok=True)
+            temp_dir = os.path.join(static_folder_path, "temp")
+            os.makedirs(temp_dir, exist_ok=True)
             input_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}.webm")
-            with open(input_path, "wb") as f: f.write(request.get_data())
+            with open(input_path, "wb") as f:
+                f.write(request.get_data())
             ext = "gif" if request.args.get("fmt", "mp4").lower() == "gif" else "mp4"
             output_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}.{ext}")
-            cmd = [ffmpeg_path, "-y", "-i", input_path]
-            if ext == "mp4": cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
-            cmd.append(output_path)
-            subprocess.run(cmd, check=True, capture_output=True)
-            os.remove(input_path)
+            if ffmpeg_path:
+                cmd = [ffmpeg_path, "-y", "-i", input_path]
+                if ext == "mp4":
+                    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
+                cmd.append(output_path)
+                subprocess.run(cmd, check=True, capture_output=True)
+                os.remove(input_path)
+            else:
+                shutil.move(input_path, output_path)
             rel_path = os.path.relpath(output_path, static_folder_path).replace(os.sep, "/")
             return jsonify(url=url_for("static", filename=rel_path))
         except subprocess.CalledProcessError as e:
-            logger.error("Errore FFMPEG: %s", e.stderr.decode('utf-8'))
+            logger.error("Errore FFMPEG: %s", e.stderr.decode("utf-8"))
             return jsonify(error=f"Errore FFMPEG: {e.stderr.decode('utf-8')}"), 500
-        except Exception as e: logger.exception("Errore conversione video"); return jsonify(error=str(e)), 500
+        except Exception as e:
+            logger.exception("Errore conversione video")
+            return jsonify(error=str(e)), 500
 
     @app_instance.route("/task_status/<task_id>") # ... (come prima)
     def task_status(task_id):

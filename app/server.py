@@ -12,9 +12,15 @@ import subprocess
 import gc
 import base64
 import torch
+import shutil
 from threading import Lock
 from celery import Celery
-from PIL import Image, UnidentifiedImageError, ImageDraw, ImageOps # Aggiunto ImageDraw
+from PIL import Image, ImageDraw, ImageOps
+try:
+    from PIL import UnidentifiedImageError
+except Exception:  # pragma: no cover
+    class UnidentifiedImageError(Exception):
+        pass
 import insightface.app 
 import insightface.model_zoo 
 from gfpgan import GFPGANer
@@ -44,6 +50,7 @@ from flask_cors import CORS
 from flask_wtf import CSRFProtect
 from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
 from app.auth import auth_bp, login_required
+from app.model_manager import model_bp
 from .forms import SearchForm # Assumendo che forms.py sia allo stesso livello di server.py
 from .user_model import init_db # Assumendo che user_model.py sia allo stesso livello
 from dotenv import load_dotenv
@@ -68,7 +75,9 @@ except ImportError:
 
 # === CONFIGURAZIONE GLOBALE ===
 DEBUG_MODE = os.getenv("DEBUG_MODE", "0") == "1"
-CFG_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
+DEFAULT_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
+ACTIVE_MODEL_FILE = os.path.join("models", "active_model.txt")
+loaded_model_name = None
 CFG_DETAIL_STEPS = 18
 MAX_IMAGE_DIMENSION = 1280
 MAX_UPLOAD_SIZE = 8 * 1024 * 1024  # 8MB limit
@@ -163,24 +172,43 @@ def ensure_sam_predictor_is_loaded():
             logger.error("Modello SAM '%s' non trovato.", model_filename)
 
 
-def ensure_pipeline_is_loaded():
-    global pipe, canny_detector
-    if pipe is None:
-        logger.info("Caricamento pipeline SDXL '%s'...", CFG_MODEL_NAME)
-        model_path = os.path.join("models", "checkpoints", CFG_MODEL_NAME)
-        if not os.path.isdir(model_path):
-            logger.error("Directory del modello SDXL non trovata: %s", model_path)
-            return False
-        canny_detector = CannyDetector()
-        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16)
-        pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
-            model_path,
-            controlnet=controlnet,
-            torch_dtype=torch.float16,
-            use_safetensors=True,
-        )
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+def _get_active_model():
+    if os.path.isfile(ACTIVE_MODEL_FILE):
+        try:
+            with open(ACTIVE_MODEL_FILE, "r", encoding="utf-8") as f:
+                name = f.read().strip()
+                if name:
+                    return name
+        except Exception:
+            pass
+    return DEFAULT_MODEL_NAME
+
+
+def ensure_pipeline_is_loaded(model_name=None):
+    global pipe, canny_detector, loaded_model_name
+    model_name = model_name or _get_active_model()
+    if pipe is not None and loaded_model_name == model_name:
+        return True
+
+    release_vram()
+    logger.info("Caricamento pipeline SDXL '%s'...", model_name)
+    model_path = os.path.join("models", "checkpoints", model_name)
+    if not os.path.isdir(model_path):
+        logger.error("Directory del modello SDXL non trovata: %s", model_path)
+        return False
+    canny_detector = CannyDetector()
+    controlnet = ControlNetModel.from_pretrained(
+        "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+    )
+    pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
+        model_path,
+        controlnet=controlnet,
+        torch_dtype=torch.float16,
+        use_safetensors=True,
+    )
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    pipe.enable_model_cpu_offload()
+    loaded_model_name = model_name
     return True
 
 
@@ -232,8 +260,8 @@ def normalize_image(img: Image.Image, max_dim: int = MAX_IMAGE_DIMENSION) -> Ima
 # ... (le altre funzioni di processo come make_mask, process_generate_all_parts, etc. rimangono invariate) ...
 # (Per brevità, non le ripeto qui, ma assicurati che siano presenti nel tuo file)
 
-def process_generate_all_parts(image_bytes, prompts, progress_cb=None):
-    ensure_pipeline_is_loaded()
+def process_generate_all_parts(image_bytes, prompts, progress_cb=None, model_name=None):
+    ensure_pipeline_is_loaded(model_name)
     ensure_yolo_parser_is_loaded()
     ensure_sam_predictor_is_loaded()
     current_image = normalize_image(Image.open(io.BytesIO(image_bytes)).convert("RGB"))
@@ -273,8 +301,8 @@ def process_generate_all_parts(image_bytes, prompts, progress_cb=None):
             progress_cb(int(completed / total * 100))
     return current_image
 
-def process_create_scene(subject_bytes, prompt, progress_cb=None):
-    ensure_pipeline_is_loaded()
+def process_create_scene(subject_bytes, prompt, progress_cb=None, model_name=None):
+    ensure_pipeline_is_loaded(model_name)
     def progress_callback(pipe_ref, step, timestep, callback_kwargs): # Modificato per corrispondere alla firma attesa
         if progress_cb:
             progress_cb(int((step + 1) / CFG_DETAIL_STEPS * 100))
@@ -295,10 +323,10 @@ def process_create_scene(subject_bytes, prompt, progress_cb=None):
     if progress_cb: progress_cb(100)
     return result
 
-def process_detail_and_upscale(scene_image_bytes, enable_hires, tile_denoising_strength, progress_cb=None):
+def process_detail_and_upscale(scene_image_bytes, enable_hires, tile_denoising_strength, progress_cb=None, model_name=None):
     global pipe, canny_detector # Riferimenti a variabili globali
     try:
-        ensure_pipeline_is_loaded()
+        ensure_pipeline_is_loaded(model_name)
         scene = normalize_image(Image.open(io.BytesIO(scene_image_bytes)).convert("RGB"))
         if enable_hires:
             logger.info("Avvio Hi-Res fix (RealESRGAN)...")
@@ -381,10 +409,10 @@ def process_final_swap(target_bytes, source_bytes, source_idx, target_idx, progr
 
 # --- TASKS CELERY --- (invariate, ma assicurati che usino le funzioni di processo corrette)
 @celery.task(bind=True)
-def create_scene_task(self, subject_bytes, prompt):
+def create_scene_task(self, subject_bytes, prompt, model_name=None):
     def update_progress(p):
         self.update_state(state='PROGRESS', meta={'progress': p})
-    final_image = process_create_scene(subject_bytes, prompt, update_progress)
+    final_image = process_create_scene(subject_bytes, prompt, update_progress, model_name)
     buffered = io.BytesIO()
     final_image.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -392,21 +420,21 @@ def create_scene_task(self, subject_bytes, prompt):
     return {'progress': 100, 'data': img_str}
 
 @celery.task(bind=True)
-def detail_and_upscale_task(self, scene_image_bytes, enable_hires, tile_denoising_strength):
+def detail_and_upscale_task(self, scene_image_bytes, enable_hires, tile_denoising_strength, model_name=None):
     def update_progress(p):
         self.update_state(state='PROGRESS', meta={'progress': p})
-    final_image = process_detail_and_upscale(scene_image_bytes, enable_hires, tile_denoising_strength, update_progress)
+    final_image = process_detail_and_upscale(scene_image_bytes, enable_hires, tile_denoising_strength, update_progress, model_name)
     buffered = io.BytesIO()
     final_image.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     return {'progress': 100, 'data': img_str}
 
 @celery.task(bind=True)
-def generate_all_parts_task(self, prompts_json_str, image_bytes): # Modificato per accettare prompts come stringa JSON
+def generate_all_parts_task(self, prompts_json_str, image_bytes, model_name=None):
     prompts = json.loads(prompts_json_str) # Parsa la stringa JSON
     def update_progress(p):
         self.update_state(state="PROGRESS", meta={"progress": p})
-    final_image = process_generate_all_parts(image_bytes, prompts, update_progress)
+    final_image = process_generate_all_parts(image_bytes, prompts, update_progress, model_name)
     buffered = io.BytesIO()
     final_image.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -443,6 +471,7 @@ def create_app():
     CSRFProtect(app_instance) # Usa app_instance
     app_instance.register_blueprint(meme_bp) # Usa app_instance
     app_instance.register_blueprint(auth_bp) # Usa app_instance
+    app_instance.register_blueprint(model_bp)
 
     # --- DEFINIZIONE ROUTE ---
     @app_instance.route("/") # Usa app_instance
@@ -742,7 +771,8 @@ def create_app():
         if "subject_data" not in request.files or "prompt" not in request.form: return jsonify(error="Dati mancanti"), 400
         subject_bytes = request.files["subject_data"].read()
         prompt_text = request.form["prompt"]
-        task = create_scene_task.apply_async(args=[subject_bytes, prompt_text])
+        model_name = request.form.get("model_name")
+        task = create_scene_task.apply_async(args=[subject_bytes, prompt_text, model_name])
         return jsonify(task_id=task.id), 202
     
     @app_instance.route("/async/detail_and_upscale", methods=["POST"])
@@ -755,7 +785,8 @@ def create_app():
         scene_image_bytes = file.read()
         enable_hires = request.form.get("enable_hires", "true").lower() == "true"
         tile_denoising_strength = float(request.form.get("tile_denoising_strength", 0.3))
-        task = detail_and_upscale_task.apply_async(args=[scene_image_bytes, enable_hires, tile_denoising_strength])
+        model_name = request.form.get("model_name")
+        task = detail_and_upscale_task.apply_async(args=[scene_image_bytes, enable_hires, tile_denoising_strength, model_name])
         return jsonify(task_id=task.id), 202
 
     @app_instance.route("/async/generate_all_parts", methods=["POST"])
@@ -767,7 +798,8 @@ def create_app():
         # file.seek(0) # Non più necessario
         image_bytes_content = file.read()
         prompts_json_str = request.form.get("prompts")
-        task = generate_all_parts_task.apply_async(args=[prompts_json_str, image_bytes_content])
+        model_name = request.form.get("model_name")
+        task = generate_all_parts_task.apply_async(args=[prompts_json_str, image_bytes_content, model_name])
         return jsonify(task_id=task.id), 202
 
     @app_instance.route("/async/final_swap", methods=["POST"])
@@ -797,8 +829,8 @@ def create_app():
 
     @app_instance.route("/save_result_video", methods=["POST"]) # Usa app_instance
     def save_result_video():
-        if not ffmpeg_path: return jsonify(error="ffmpeg not available"), 500
-        if not request.get_data(): return jsonify(error="Missing video data"), 400
+        if not request.get_data():
+            return jsonify(error="Missing video data"), 400
         try:
             static_folder_path = current_app.static_folder if current_app else app_instance.static_folder
             temp_dir = os.path.join(static_folder_path, "temp")
@@ -807,11 +839,15 @@ def create_app():
             with open(input_path, "wb") as f: f.write(request.get_data())
             ext = "gif" if request.args.get("fmt", "mp4").lower() == "gif" else "mp4"
             output_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}.{ext}")
-            cmd = [ffmpeg_path, "-y", "-i", input_path]
-            if ext == "mp4": cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
-            cmd.append(output_path)
-            subprocess.run(cmd, check=True, capture_output=True)
-            os.remove(input_path)
+            if ffmpeg_path:
+                cmd = [ffmpeg_path, "-y", "-i", input_path]
+                if ext == "mp4":
+                    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
+                cmd.append(output_path)
+                subprocess.run(cmd, check=True, capture_output=True)
+                os.remove(input_path)
+            else:
+                shutil.move(input_path, output_path)
             rel_path = os.path.relpath(output_path, static_folder_path).replace(os.sep, "/")
             return jsonify(url=url_for("static", filename=rel_path))
         except subprocess.CalledProcessError as e:
