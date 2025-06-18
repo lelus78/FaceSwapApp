@@ -21,13 +21,26 @@
             </div>
             <p id="progress-text" class="text-center text-blue-300 mt-2 font-mono" aria-live="polite">0%</p>
         </div>
-    </div>
+</div>
 </div>
 <div id="gallery-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="gallery-modal-img">
     <div class="flex items-center justify-center min-h-screen px-4">
         <div class="modal-content bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-2xl max-w-3xl mx-auto">
             <img id="gallery-modal-img" src="" alt="Anteprima" class="max-h-[80vh] mx-auto rounded-lg" />
             <button type="button" onclick="closeModal('gallery-modal')" class="mt-4 w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Chiudi</button>
+        </div>
+</div>
+</div>
+<div id="model-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="model-modal-title">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="modal-content bg-gray-900 border border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm mx-auto w-full text-white">
+            <h2 id="model-modal-title" class="text-xl font-bold mb-4">Scarica Modello da Civitai</h2>
+            <label for="model-url-input" class="sr-only">URL modello Civitai</label>
+            <input type="text" id="model-url-input" placeholder="Incolla URL modello" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-gray-300 mb-4">
+            <div class="flex justify-end gap-2">
+                <button type="button" id="install-model-btn" class="btn btn-primary">Scarica e Installa</button>
+                <button type="button" id="cancel-model-btn" class="btn bg-gray-600 text-white">Annulla</button>
+            </div>
         </div>
     </div>
 </div>
@@ -63,7 +76,10 @@
                 </div>
                 <div class="mb-4">
                     <label for="model-selector" class="block mb-2 text-sm font-medium text-gray-400">Modello di generazione</label>
-                    <select id="model-selector" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-gray-300"></select>
+                    <div class="flex gap-2">
+                        <select id="model-selector" class="flex-1 bg-gray-700 border border-gray-600 rounded-lg p-2 text-gray-300"></select>
+                        <button type="button" id="add-model-btn" class="btn bg-blue-600 text-white px-3 py-2 rounded-lg" title="Aggiungi modello">+</button>
+                    </div>
                 </div>
                 <button id="generate-scene-btn" class="btn btn-primary w-full mt-2 text-white font-bold py-2 px-4 rounded-lg">🎨 Genera Sfondo e Componi Scena</button>
             </div>

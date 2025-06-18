@@ -83,6 +83,14 @@ export function showError(title, message) {
   }
 }
 
+export function showToast(msg) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 2000);
+}
+
 export function goToStep(stepNumber) {
   state.currentStep = stepNumber;
   document.querySelectorAll('.wizard-step').forEach(step => step.classList.add('hidden'));
@@ -206,6 +214,49 @@ async function pollTask(taskId, progressTitle = 'Elaborazione AI...') {
     }
   } finally {
     finishProgressBar();
+  }
+}
+
+async function pollGenericTask(taskId, progressTitle = 'Operazione in corso...') {
+  startProgressBar(progressTitle, 60);
+  const pollingInterval = 2000;
+  try {
+    while (true) {
+      const status = await api.getTaskStatus(taskId);
+      if (status.progress) {
+        dom.progressBar.style.width = `${status.progress}%`;
+        dom.progressText.textContent = `${status.progress}%`;
+      }
+      if (status.state === 'SUCCESS') {
+        return status.result;
+      }
+      if (status.state === 'FAILURE' || status.state === 'REVOKED') {
+        throw new Error(status.error || 'Il task è fallito.');
+      }
+      await new Promise(resolve => setTimeout(resolve, pollingInterval));
+    }
+  } finally {
+    finishProgressBar();
+  }
+}
+
+export async function handleInstallModel() {
+  const url = dom.modelUrlInput.value.trim();
+  if (!url) return showError('URL mancante', 'Inserisci un link valido da Civitai.');
+  closeModal('model-modal');
+  try {
+    const res = await fetch('/api/models/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Impossibile avviare il download');
+    await pollGenericTask(data.task_id, '📥 Download modello in corso...');
+    await loadAvailableModels();
+    showToast('Modello installato');
+  } catch (err) {
+    showError('Errore Download Modello', err.message);
   }
 }
 
@@ -386,6 +437,13 @@ export function setupEventListeners() {
   dom.skipToSwapBtn.addEventListener('click', handleSkipToSwap);
   dom.generateSceneBtn.addEventListener('click', handleCreateScene);
   dom.gotoStep3Btn.addEventListener('click', () => goToStep(3));
+  dom.addModelBtn.addEventListener('click', () => {
+    dom.modelModal.style.display = 'flex';
+    dom.modelUrlInput.focus();
+  });
+  dom.cancelModelBtn.addEventListener('click', () => closeModal('model-modal'));
+  dom.installModelBtn.addEventListener('click', handleInstallModel);
+  dom.modelUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); handleInstallModel(); } });
   dom.startUpscaleBtn.addEventListener('click', handleUpscaleAndDetail);
   dom.captionBtn.addEventListener('click', handleGenerateCaption);
   dom.tileDenoisingSlider.addEventListener('input', e => dom.tileDenoisingValue.textContent = parseFloat(e.target.value).toFixed(2));
