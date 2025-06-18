@@ -64,9 +64,11 @@ export async function loadStickers() {
       category.stickers.forEach(path => {
         const isVideo = path.endsWith('.webm');
         const isLottie = path.endsWith('.tgs');
+        const name = path.split('/').pop().split('.')[0];
         const wrapper = document.createElement('button');
         wrapper.type = 'button';
         wrapper.className = 'sticker-item-wrapper relative focus:outline-none';
+        wrapper.setAttribute('aria-label', name);
         let el;
         if (isLottie) {
           el = document.createElement('div');
@@ -76,6 +78,8 @@ export async function loadStickers() {
           if (isVideo) { el.autoplay = el.muted = el.loop = el.playsInline = true; }
           else { el.crossOrigin = 'anonymous'; }
           el.src = path;
+          if (!isVideo) el.alt = name;
+          else el.setAttribute('aria-label', name);
         }
         el.className = 'h-20 w-auto object-contain p-1 bg-gray-700 rounded-md cursor-pointer hover:bg-blue-600 transition-all sticker-item';
         wrapper.appendChild(el);
