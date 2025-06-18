@@ -90,6 +90,29 @@ export function goToStep(stepNumber) {
   document.getElementById(stepId)?.classList.remove('hidden');
 }
 
+export async function loadAvailableModels() {
+  if (!dom.modelSelector) return;
+  try {
+    const res = await fetch('/api/models/list');
+    const data = await res.json();
+    const models = data.models || data;
+    const active = data.active;
+    dom.modelSelector.innerHTML = '';
+    models.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      if (name === active) opt.selected = true;
+      dom.modelSelector.appendChild(opt);
+    });
+    if (!dom.modelSelector.value && models.length > 0) {
+      dom.modelSelector.value = models[0];
+    }
+  } catch (err) {
+    console.error('Errore caricamento modelli', err);
+  }
+}
+
 export function handleSubjectFile(file) {
   if (!file?.type.startsWith('image/')) return;
   state.subjectFile = file;
@@ -199,7 +222,8 @@ export async function handleCreateScene() {
             dom.bgPromptInput.value = prompt;
             finishProgressBar();
         }
-        const taskInfo = await api.createSceneAsync(state.processedSubjectBlob, prompt);
+        const model = dom.modelSelector ? dom.modelSelector.value : undefined;
+        const taskInfo = await api.createSceneAsync(state.processedSubjectBlob, prompt, model);
         const resultBlob = await pollTask(taskInfo.task_id, '🎨 Creazione Scena AI in corso...');
         state.sceneImageBlob = resultBlob;
         state.finalImageWithSwap = null;

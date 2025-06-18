@@ -46,10 +46,11 @@ export async function getStickers() {
     return response.json();
 }
 
-export async function createSceneAsync(processedSubjectBlob, finalPrompt) {
+export async function createSceneAsync(processedSubjectBlob, finalPrompt, modelName) {
     const formData = new FormData();
     formData.append('subject_data', processedSubjectBlob);
     formData.append('prompt', finalPrompt);
+    if (modelName) formData.append('model_name', modelName);
 
     // Chiama la nuova rotta asincrona
     const response = await csrfFetch(`${BASE_URL}/async/create_scene`, { method: 'POST', body: formData });
@@ -65,10 +66,11 @@ export async function prepareSubject(subjectFile) {
     return response.blob();
 }
 
-export async function createScene(processedSubjectBlob, finalPrompt) {
+export async function createScene(processedSubjectBlob, finalPrompt, modelName) {
     const formData = new FormData();
     formData.append('subject_data', processedSubjectBlob);
     formData.append('prompt', finalPrompt);
+    if (modelName) formData.append('model_name', modelName);
     const response = await csrfFetch(`${BASE_URL}/create_scene`, { method: 'POST', body: formData, cache: 'no-cache' });
     await handleResponse(response);
     return response.blob();
