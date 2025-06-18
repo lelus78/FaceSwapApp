@@ -91,7 +91,7 @@ DEBUG_MODE = os.getenv("DEBUG_MODE", "0") == "1"
 DEFAULT_MODEL_NAME = "sdxl-yamers-realistic5-v5Rundiffusion"
 ACTIVE_MODEL_FILE = os.path.join("models", "active_model.txt")
 loaded_model_name = None
-CFG_DETAIL_STEPS = 18
+CFG_DETAIL_STEPS = 25
 MAX_IMAGE_DIMENSION = 1280
 MAX_UPLOAD_SIZE = 8 * 1024 * 1024  # 8MB limit
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg"}
@@ -625,7 +625,14 @@ def download_and_install_model_task(self, civitai_url):
             temp_safetensors_path = os.path.join(tmpdir, "model.safetensors")
             
             update(5, "Starting download...")
-            with requests.get(download_url, stream=True, timeout=30) as r:
+            api_key = os.getenv("CIVITAI_API_KEY")
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+                logger.info("Richiesta di download autenticata con chiave API.")
+
+            # Aggiunge gli "headers" alla richiesta
+            with requests.get(download_url, stream=True, timeout=30, headers=headers) as r:
                 r.raise_for_status()
                 total_size = int(r.headers.get('content-length', 0))
                 
