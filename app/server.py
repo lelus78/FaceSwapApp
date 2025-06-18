@@ -339,6 +339,21 @@ def process_detail_and_upscale(scene_image_bytes, enable_hires, tile_denoising_s
 
 
 def process_final_swap(target_bytes, source_bytes, source_idx, target_idx, progress_cb=None):
+    """Esegue il face swap tra due immagini.
+
+    Args:
+        target_bytes (bytes): Immagine di destinazione in formato bytes.
+        source_bytes (bytes): Immagine sorgente da cui prelevare il volto.
+        source_idx (int): Indice del volto sorgente da usare.
+        target_idx (int): Indice del volto da sostituire nella destinazione.
+        progress_cb (Callable[[int], None] | None): Callback opzionale per
+            notificare l'avanzamento in percentuale.
+
+    Returns:
+        Image.Image: L'immagine risultante con il volto sostituito e
+        opzionalmente restaurato.
+    """
+
     ensure_face_analyzer_is_loaded()
     ensure_face_swapper_is_loaded()
     ensure_face_restorer_is_loaded()
@@ -639,6 +654,11 @@ def create_app():
     # --- MODIFICHE PER DEBUG IN detect_faces ---
     @app_instance.route("/detect_faces", methods=["POST"])
     def detect_faces():
+        """Rileva i volti nell'immagine inviata e applica un padding proporzionale.
+
+        Returns:
+            Response: JSON con la lista di bounding box rilevate e paddate.
+        """
         global face_analyzer
         with face_analyzer_lock:
             try:
@@ -675,10 +695,14 @@ def create_app():
                     
                     bbox_width = x2 - x1
                     bbox_height = y2 - y1
-                    pad_top_percent = 0.10 
-                    pad_bottom_percent = 0.15 
-                    pad_sides_percent = 0.08 
+                    pad_top_percent = 0.10
+                    pad_bottom_percent = 0.15
+                    pad_sides_percent = 0.08
 
+                    # Calcola la quantità di padding in pixel.
+                    # pt = padding sopra la bbox in percentuale dell'altezza.
+                    # pb = padding sotto la bbox in percentuale dell'altezza.
+                    # ps = padding laterale in percentuale della larghezza.
                     pt = int(bbox_height * pad_top_percent)
                     pb = int(bbox_height * pad_bottom_percent)
                     ps = int(bbox_width * pad_sides_percent)
