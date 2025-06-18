@@ -301,8 +301,11 @@ def normalize_image(
     return img
 
 
-# ... (le altre funzioni di processo come make_mask, process_generate_all_parts, etc. rimangono invariate) ...
-# (Per brevità, non le ripeto qui, ma assicurati che siano presenti nel tuo file)
+def make_mask(image, target_parts):
+    # Questa è una funzione di stub. Dovresti implementare la logica
+    # per creare una maschera basata su yolo_parser e sam_predictor.
+    logger.warning("La funzione 'make_mask' non è implementata e restituirà una maschera vuota.")
+    return Image.new('L', image.size, 0)
 
 
 def process_generate_all_parts(image_bytes, prompts, progress_cb=None, model_name=None):
@@ -332,7 +335,6 @@ def process_generate_all_parts(image_bytes, prompts, progress_cb=None, model_nam
             canny_array[mask_array > 128] = 0
             control_image = Image.fromarray(canny_array)
             if DEBUG_MODE and "current_app" in globals() and current_app:
-                # Usa current_app.root_path se disponibile, altrimenti una directory relativa
                 temp_dir_base = current_app.root_path if current_app else "."
                 control_image.save(
                     os.path.join(
@@ -360,12 +362,11 @@ def process_generate_all_parts(image_bytes, prompts, progress_cb=None, model_nam
 def process_create_scene(subject_bytes, prompt, progress_cb=None, model_name=None):
     ensure_pipeline_is_loaded(model_name)
 
-    def progress_callback(
-        pipe_ref, step, timestep, callback_kwargs
-    ):  # Modificato per corrispondere alla firma attesa
+    # --- INIZIO BLOCCO CORRETTO ---
+    def progress_callback(step, timestep, latents):
         if progress_cb:
             progress_cb(int((step + 1) / CFG_DETAIL_STEPS * 100))
-        return callback_kwargs
+    # --- FINE BLOCCO CORRETTO ---
 
     subject = normalize_image(Image.open(io.BytesIO(subject_bytes)).convert("RGB"))
     mask = remove(subject, only_mask=True, post_process_mask=True)
@@ -373,6 +374,7 @@ def process_create_scene(subject_bytes, prompt, progress_cb=None, model_name=Non
     canny_map = canny_detector(subject, low_threshold=50, high_threshold=150)
     if canny_map.size != subject.size:
         canny_map = canny_map.resize(subject.size, Image.Resampling.LANCZOS)
+    
     result = pipe(
         prompt=prompt,
         image=subject,
@@ -380,12 +382,16 @@ def process_create_scene(subject_bytes, prompt, progress_cb=None, model_name=Non
         control_image=canny_map,
         width=subject.width,
         height=subject.height,
-        callback_on_step_end=progress_callback,  # Modificato nome callback
+        # --- INIZIO BLOCCO CORRETTO ---
+        callback=progress_callback,
+        callback_steps=1,
+        # --- FINE BLOCCO CORRETTO ---
         controlnet_conditioning_scale=0.8,
         num_inference_steps=CFG_DETAIL_STEPS,
         strength=1.0,
         guidance_scale=10,
     ).images[0]
+
     if progress_cb:
         progress_cb(100)
     return result
@@ -398,7 +404,7 @@ def process_detail_and_upscale(
     progress_cb=None,
     model_name=None,
 ):
-    global pipe, canny_detector  # Riferimenti a variabili globali
+    global pipe, canny_detector
     try:
         ensure_pipeline_is_loaded(model_name)
         scene = normalize_image(
@@ -425,7 +431,6 @@ def process_detail_and_upscale(
                 pre_pad=0,
                 half=True,
             )
-            # Assicurati che 'scene' sia un array NumPy per upsampler.enhance
             scene_np = cv2.cvtColor(np.array(scene), cv2.COLOR_RGB2BGR)
             output, _ = upsampler.enhance(scene_np, outscale=2)
             scene = Image.fromarray(cv2.cvtColor(output, cv2.COLOR_BGR2RGB))
@@ -437,15 +442,12 @@ def process_detail_and_upscale(
         if canny_map.size != scene.size:
             canny_map = canny_map.resize(scene.size, Image.Resampling.LANCZOS)
 
-        def detailing_progress_callback(
-            pipe_ref, step, timestep, callback_kwargs
-        ):  # Modificato per corrispondere
+        # --- INIZIO BLOCCO CORRETTO ---
+        def detailing_progress_callback(step, timestep, latents):
             if progress_cb:
-                progress = 50 + int(
-                    (step + 1) / CFG_DETAIL_STEPS * 45
-                )  # Assumendo CFG_DETAIL_STEPS
+                progress = 50 + int((step + 1) / CFG_DETAIL_STEPS * 45)
                 progress_cb(progress)
-            return callback_kwargs
+        # --- FINE BLOCCO CORRETTO ---
 
         result = pipe(
             prompt="",
@@ -457,36 +459,24 @@ def process_detail_and_upscale(
             controlnet_conditioning_scale=1.0,
             num_inference_steps=CFG_DETAIL_STEPS,
             strength=float(tile_denoising_strength),
-            guidance_scale=5,  # Convertito a float
-            callback_on_step_end=detailing_progress_callback,  # Modificato nome callback
+            guidance_scale=5,
+            # --- INIZIO BLOCCO CORRETTO ---
+            callback=detailing_progress_callback,
+            callback_steps=1,
+            # --- FINE BLOCCO CORRETTO ---
         ).images[0]
 
         if progress_cb:
             progress_cb(100)
         return result
     finally:
-        pipe, canny_detector = None, None  # Resetta le variabili globali
+        pipe, canny_detector = None, None
         release_vram()
 
 
 def process_final_swap(
     target_bytes, source_bytes, source_idx, target_idx, progress_cb=None
 ):
-    """Esegue il face swap tra due immagini.
-
-    Args:
-        target_bytes (bytes): Immagine di destinazione in formato bytes.
-        source_bytes (bytes): Immagine sorgente da cui prelevare il volto.
-        source_idx (int): Indice del volto sorgente da usare.
-        target_idx (int): Indice del volto da sostituire nella destinazione.
-        progress_cb (Callable[[int], None] | None): Callback opzionale per
-            notificare l'avanzamento in percentuale.
-
-    Returns:
-        Image.Image: L'immagine risultante con il volto sostituito e
-        opzionalmente restaurato.
-    """
-
     ensure_face_analyzer_is_loaded()
     ensure_face_swapper_is_loaded()
     ensure_face_restorer_is_loaded()
@@ -495,7 +485,6 @@ def process_final_swap(
     target_cv = cv2.cvtColor(np.array(target_pil), cv2.COLOR_RGB2BGR)
     source_cv = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR)
 
-    # Usa face_analyzer globale
     target_faces = face_analyzer.get(target_cv)
     source_faces = face_analyzer.get(source_cv)
 
@@ -522,7 +511,7 @@ def process_final_swap(
     return Image.fromarray(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
 
 
-# --- TASKS CELERY --- (invariate, ma assicurati che usino le funzioni di processo corrette)
+# --- TASKS CELERY ---
 @celery.task(bind=True)
 def create_scene_task(self, subject_bytes, prompt, model_name=None):
     try:
@@ -533,7 +522,7 @@ def create_scene_task(self, subject_bytes, prompt, model_name=None):
 
         def update_progress(p):
             progress = 5 + int(p * 0.90)
-            self.update_state(state="PROGRESS", meta={"progress": progress})
+            self.update_state(state="PROGRESS", meta={"progress": progress, "status": f"Generazione scena: {p}%"})
 
         final_image = process_create_scene(
             subject_bytes, prompt, update_progress, model_name
@@ -542,8 +531,10 @@ def create_scene_task(self, subject_bytes, prompt, model_name=None):
         final_image.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         release_vram()
-        self.update_state(state="SUCCESS", meta={"progress": 100})
-        return {"progress": 100, "data": img_str}
+        
+        result = {"progress": 100, "data": img_str}
+        self.update_state(state="SUCCESS", meta=result)
+        return result
     except Exception as e:
         self.update_state(
             state="FAILURE",
@@ -564,7 +555,7 @@ def detail_and_upscale_task(
 
         def update_progress(p):
             progress = 5 + int(p * 0.90)
-            self.update_state(state="PROGRESS", meta={"progress": progress})
+            self.update_state(state="PROGRESS", meta={"progress": progress, "status": f"Applicando dettagli: {p}%"})
 
         final_image = process_detail_and_upscale(
             scene_image_bytes,
@@ -576,8 +567,10 @@ def detail_and_upscale_task(
         buffered = io.BytesIO()
         final_image.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        self.update_state(state="SUCCESS", meta={"progress": 100})
-        return {"progress": 100, "data": img_str}
+        
+        result = {"progress": 100, "data": img_str}
+        self.update_state(state="SUCCESS", meta=result)
+        return result
     except Exception as e:
         self.update_state(
             state="FAILURE",
@@ -597,7 +590,7 @@ def generate_all_parts_task(self, prompts_json_str, image_bytes, model_name=None
 
         def update_progress(p):
             progress = 5 + int(p * 0.90)
-            self.update_state(state="PROGRESS", meta={"progress": progress})
+            self.update_state(state="PROGRESS", meta={"progress": progress, "status": f"Generazione parti: {p}%"})
 
         final_image = process_generate_all_parts(
             image_bytes, prompts, update_progress, model_name
@@ -606,8 +599,10 @@ def generate_all_parts_task(self, prompts_json_str, image_bytes, model_name=None
         final_image.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         release_vram()
-        self.update_state(state="SUCCESS", meta={"progress": 100})
-        return {"progress": 100, "data": img_str}
+        
+        result = {"progress": 100, "data": img_str}
+        self.update_state(state="SUCCESS", meta=result)
+        return result
     except Exception as e:
         self.update_state(
             state="FAILURE",
@@ -626,7 +621,7 @@ def final_swap_task(self, target_bytes, source_bytes, s_idx, t_idx):
 
         def update_progress(p):
             progress = 5 + int(p * 0.90)
-            self.update_state(state="PROGRESS", meta={"progress": progress})
+            self.update_state(state="PROGRESS", meta={"progress": progress, "status": f"Eseguendo face swap: {p}%"})
 
         final_image = process_final_swap(
             target_bytes, source_bytes, s_idx, t_idx, update_progress
@@ -635,8 +630,10 @@ def final_swap_task(self, target_bytes, source_bytes, s_idx, t_idx):
         final_image.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         release_vram()
-        self.update_state(state="SUCCESS", meta={"progress": 100})
-        return {"progress": 100, "data": img_str}
+        
+        result = {"progress": 100, "data": img_str}
+        self.update_state(state="SUCCESS", meta=result)
+        return result
     except Exception as e:
         self.update_state(
             state="FAILURE",
@@ -647,9 +644,6 @@ def final_swap_task(self, target_bytes, source_bytes, s_idx, t_idx):
 
 @celery.task(bind=True)
 def download_and_install_model_task(self, civitai_url):
-    """
-    Task per scaricare e installare un modello da Civitai, mostrando la velocità di download.
-    """
     try:
         self.update_state(
             state="PROGRESS",
@@ -693,15 +687,16 @@ def download_and_install_model_task(self, civitai_url):
 
         if os.path.isdir(output_dir):
             logger.info("Modello già convertito. Niente da fare.")
-            self.update_state(
-                state="SUCCESS",
-                meta={"progress": 100, "status": "Model already installed."},
-            )
-            return {
+            result = {
                 "progress": 100,
                 "status": "Model already installed.",
                 "model_name": safe_model_name,
             }
+            self.update_state(
+                state="SUCCESS",
+                meta=result,
+            )
+            return result
 
         if not os.path.isfile(cached_path):
             update(5, "Starting download...")
@@ -739,16 +734,17 @@ def download_and_install_model_task(self, civitai_url):
         update(98, "Converting model...")
 
         command = [sys.executable, "convert_safetensor.py", "--input", cached_path, "--output", safe_model_name]
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
-        if result.returncode != 0:
-            error_message = f"Conversione fallita: {result.stderr}"
+        result_proc = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result_proc.returncode != 0:
+            error_message = f"Conversione fallita: {result_proc.stderr}"
             logger.error(f"Errore dallo script di conversione:\n{error_message}")
             raise Exception(error_message)
 
         logger.info("Conversione completata con successo.")
         release_vram()
-        self.update_state(state="SUCCESS", meta={"progress": 100, "status": "Completed!"})
-        return {"progress": 100, "status": "Completed!", "model_name": safe_model_name}
+        result = {"progress": 100, "status": "Completed!", "model_name": safe_model_name}
+        self.update_state(state="SUCCESS", meta=result)
+        return result
 
     except Exception as e:
         error_str = str(e)
@@ -759,11 +755,9 @@ def download_and_install_model_task(self, civitai_url):
 
 # --- FACTORY DELL'APPLICAZIONE FLASK ---
 def create_app():
-    app_instance = Flask(__name__)  # Rinominato per chiarezza
+    app_instance = Flask(__name__)
     load_dotenv()
-    with app_instance.app_context():  # Usa app_instance
-        init_db()
-
+    
     app_instance.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     app_instance.config["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
     app_instance.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
@@ -773,26 +767,30 @@ def create_app():
             "CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/0"
         ),
     )
-    init_celery(app_instance)  # Passa app_instance
-    CORS(app_instance, resources={r"/*": {"origins": "*"}})  # Usa app_instance
-    CSRFProtect(app_instance)  # Usa app_instance
-    app_instance.register_blueprint(meme_bp)  # Usa app_instance
-    app_instance.register_blueprint(auth_bp)  # Usa app_instance
+    
+    with app_instance.app_context():
+        init_db()
+
+    init_celery(app_instance)
+    CORS(app_instance, resources={r"/*": {"origins": "*"}})
+    CSRFProtect(app_instance)
+    app_instance.register_blueprint(meme_bp)
+    app_instance.register_blueprint(auth_bp)
     app_instance.register_blueprint(model_bp)
 
     # --- DEFINIZIONE ROUTE ---
-    @app_instance.route("/")  # Usa app_instance
+    @app_instance.route("/")
     def home():
         return render_template("index.html", username=session.get("user_id"))
 
-    @app_instance.route("/explore")  # Usa app_instance
+    @app_instance.route("/explore")
     def explore():
         form = SearchForm()
         return render_template(
             "esplora.html", form=form, username=session.get("user_id")
         )
 
-    @app_instance.route("/gallery")  # Usa app_instance
+    @app_instance.route("/gallery")
     @login_required
     def gallery_page():
         form = SearchForm()
@@ -800,18 +798,17 @@ def create_app():
             "galleria.html", form=form, username=session.get("user_id")
         )
 
-    @app_instance.route("/api/stickers")  # Usa app_instance
+    @app_instance.route("/api/stickers")
     def get_stickers_api():
-        # Usa current_app se sei dentro un contesto di richiesta, altrimenti app_instance.static_folder
         static_folder_path = (
-            current_app.static_folder if current_app else app_instance.static_folder
+            current_app.static_folder
         )
         sticker_dir = os.path.join(static_folder_path, "stickers")
         if not os.path.isdir(sticker_dir):
             logger.warning("La cartella '%s' non è stata trovata.", sticker_dir)
             return jsonify([])
         sticker_data = []
-        for root, dirs, files in os.walk(sticker_dir):
+        for root, _, files in os.walk(sticker_dir):
             if root == sticker_dir:
                 continue
             category_name = os.path.basename(root)
@@ -828,20 +825,15 @@ def create_app():
                 )
         return jsonify(sticker_data)
 
-    # ... (Altre route API come /api/approved_memes, /api/meme, /lottie_json, /prepare_subject, etc.
-    # dovrebbero usare 'current_app' o 'app_instance' in modo simile per accedere a config o static_folder)
-
     @app_instance.route("/api/approved_memes")
     def get_approved_memes():
-        static_folder_path = (
-            current_app.static_folder if current_app else app_instance.static_folder
-        )
+        static_folder_path = current_app.static_folder
         gallery_dir = os.path.join(static_folder_path, "gallery")
         if not os.path.isdir(gallery_dir):
             return jsonify([])
-        # ... (resto della logica) ...
-        items = []  # Inizializza items
-        for root, dirs, files in os.walk(gallery_dir):
+
+        items = []
+        for root, _, files in os.walk(gallery_dir):
             meta_path = os.path.join(root, "meta.json")
             meta = {}
             if os.path.isfile(meta_path):
@@ -897,19 +889,14 @@ def create_app():
             return jsonify({"error": err}), 400
 
         fname = uuid.uuid4().hex + os.path.splitext(filename)[1]
-        static_folder_path = (
-            current_app.static_folder if current_app else app_instance.static_folder
-        )
+        static_folder_path = current_app.static_folder
         user_dir = os.path.join(static_folder_path, "gallery", user)
         os.makedirs(user_dir, exist_ok=True)
 
-        # Salva il file dopo aver riavvolto lo stream, dato che validate_upload lo ha letto
         file.seek(0)
         file.save(os.path.join(user_dir, fname))
 
-        meta_path = os.path.join(
-            user_dir, "gallery.json"
-        )  # Dovrebbe essere user_dir non static_folder_path
+        meta_path = os.path.join(user_dir, "gallery.json")
         try:
             data = (
                 json.load(open(meta_path, "r", encoding="utf-8"))
@@ -934,16 +921,11 @@ def create_app():
     @app_instance.route("/lottie_json/<path:sticker_path>")
     def get_lottie_json(sticker_path):
         try:
-            static_folder_path = (
-                current_app.static_folder if current_app else app_instance.static_folder
-            )
+            static_folder_path = current_app.static_folder
             base_dir = os.path.abspath(static_folder_path)
-            # Il percorso dello sticker dovrebbe essere relativo alla directory 'static'
-            # Esempio: sticker_path = "stickers/categoria/file.tgs"
-            # full_path dovrebbe essere costruito partendo da base_dir
             full_path = os.path.abspath(
                 os.path.join(base_dir, sticker_path.replace("static/", "", 1))
-            )  # Rimuovi 'static/' se presente
+            )
 
             if not full_path.startswith(base_dir):
                 return jsonify({"error": "Accesso non autorizzato al percorso."}), 403
@@ -961,10 +943,9 @@ def create_app():
             if "subject_image" not in request.files:
                 return jsonify(error="Immagine soggetto mancante."), 400
             file = request.files["subject_image"]
-            _, err = validate_upload(file)  # validate_upload ora fa file.seek(0)
+            _, err = validate_upload(file)
             if err:
                 return jsonify(error=err), 400
-            # file.seek(0) # Non più necessario qui se validate_upload lo fa
             subject = normalize_image(
                 Image.open(io.BytesIO(file.read())).convert("RGBA")
             )
@@ -979,14 +960,9 @@ def create_app():
 
     @app_instance.route("/enhance_prompt", methods=["POST"])
     def enhance_prompt():
-        api_key = (
-            current_app.config.get("GEMINI_API_KEY")
-            if current_app
-            else app_instance.config.get("GEMINI_API_KEY")
-        )
+        api_key = current_app.config.get("GEMINI_API_KEY")
         if not api_key:
             return jsonify(error="Gemini API key not configured"), 400
-        # ... (resto della logica, assicurati che GEMINI_MODEL_NAME sia definito) ...
         try:
             data = request.get_json()
             if not data or "image_data" not in data:
@@ -1037,14 +1013,9 @@ def create_app():
 
     @app_instance.route("/enhance_part_prompt", methods=["POST"])
     def enhance_part_prompt():
-        api_key = (
-            current_app.config.get("GEMINI_API_KEY")
-            if current_app
-            else app_instance.config.get("GEMINI_API_KEY")
-        )
+        api_key = current_app.config.get("GEMINI_API_KEY")
         if not api_key:
             return jsonify(error="Gemini API key not configured"), 400
-        # ... (resto della logica) ...
         try:
             data = request.get_json()
             if not data or "image_data" not in data:
@@ -1101,10 +1072,10 @@ def create_app():
                 if "image" not in request.files:
                     return jsonify(error="Missing image"), 400
                 file = request.files["image"]
-                _, err = validate_upload(file)  # validate_upload ora fa file.seek(0)
+                _, err = validate_upload(file)
                 if err:
                     return jsonify(error=err), 400
-                # file.seek(0) # Non più necessario
+
                 ensure_yolo_parser_is_loaded()
                 image_pil = normalize_image(
                     Image.open(io.BytesIO(file.read())).convert("RGB")
@@ -1124,14 +1095,8 @@ def create_app():
                 yolo_parser = None
                 release_vram()
 
-    # --- MODIFICHE PER DEBUG IN detect_faces ---
     @app_instance.route("/detect_faces", methods=["POST"])
     def detect_faces():
-        """Rileva i volti nell'immagine inviata e applica un padding proporzionale.
-
-        Returns:
-            Response: JSON con la lista di bounding box rilevate e paddate.
-        """
         global face_analyzer
         with face_analyzer_lock:
             try:
@@ -1147,15 +1112,9 @@ def create_app():
                 image_pil = normalize_image(
                     Image.open(io.BytesIO(image_bytes_content)).convert("RGB")
                 )
+                img_w, img_h = image_pil.size
 
-                # Ottieni le dimensioni di image_pil QUI, dopo che è stata normalizzata
-                img_w, img_h = image_pil.size  # <<--- DEFINIZIONE DI img_w e img_h
-
-                temp_dir_base = (
-                    current_app.root_path
-                    if current_app
-                    else os.path.abspath(os.path.dirname(__file__))
-                )
+                temp_dir_base = current_app.root_path
                 temp_debug_dir = os.path.join(temp_dir_base, "temp")
                 os.makedirs(temp_debug_dir, exist_ok=True)
 
@@ -1168,7 +1127,6 @@ def create_app():
                 )
 
                 ensure_face_analyzer_is_loaded()
-                # Passa l'array numpy a insightface come prima
                 faces = face_analyzer.get(
                     cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
                 )
@@ -1186,19 +1144,14 @@ def create_app():
                     pad_bottom_percent = 0.15
                     pad_sides_percent = 0.08
 
-                    # Calcola la quantità di padding in pixel.
-                    # pt = padding sopra la bbox in percentuale dell'altezza.
-                    # pb = padding sotto la bbox in percentuale dell'altezza.
-                    # ps = padding laterale in percentuale della larghezza.
                     pt = int(bbox_height * pad_top_percent)
                     pb = int(bbox_height * pad_bottom_percent)
                     ps = int(bbox_width * pad_sides_percent)
 
-                    # Usa img_w e img_h definite sopra per i limiti
                     x1_padded = max(0, x1 - ps)
                     y1_padded = max(0, y1 - pt)
-                    x2_padded = min(img_w, x2 + ps)  # Ora img_w è definita
-                    y2_padded = min(img_h, y2 + pb)  # Ora img_h è definita
+                    x2_padded = min(img_w, x2 + ps)
+                    y2_padded = min(img_h, y2 + pb)
 
                     padded_bbox = [x1_padded, y1_padded, x2_padded, y2_padded]
                     processed_faces_for_json.append({"id": i, "bbox": padded_bbox})
@@ -1224,18 +1177,15 @@ def create_app():
 
             except Exception as e:
                 traceback.print_exc()
-                # Restituisci un errore più specifico se possibile, altrimenti generico
                 error_message = f"Errore rilevamento volti: {type(e).__name__} - {e}"
-                logger.error(error_message)  # Logga l'errore completo
+                logger.error(error_message)
                 return (
                     jsonify({"error": error_message}),
                     500,
-                )  # Invia l'errore al client
+                )
             finally:
                 face_analyzer = None
                 release_vram()
-
-    # --- FINE MODIFICHE PER DEBUG ---
 
     @app_instance.route("/async/create_scene", methods=["POST"])
     @login_required
@@ -1251,14 +1201,14 @@ def create_app():
         return jsonify(task_id=task.id), 202
 
     @app_instance.route("/async/detail_and_upscale", methods=["POST"])
+    @login_required
     def async_detail_and_upscale():
         if "scene_image" not in request.files:
             return jsonify(error="Immagine mancante"), 400
         file = request.files["scene_image"]
-        _, err = validate_upload(file)  # validate_upload ora fa file.seek(0)
+        _, err = validate_upload(file)
         if err:
             return jsonify(error=err), 400
-        # file.seek(0) # Non più necessario
         scene_image_bytes = file.read()
         enable_hires = request.form.get("enable_hires", "true").lower() == "true"
         tile_denoising_strength = float(
@@ -1271,14 +1221,14 @@ def create_app():
         return jsonify(task_id=task.id), 202
 
     @app_instance.route("/async/generate_all_parts", methods=["POST"])
+    @login_required
     def async_generate_all_parts():
         if "image" not in request.files or "prompts" not in request.form:
             return jsonify(error="Dati mancanti"), 400
         file = request.files["image"]
-        _, err = validate_upload(file)  # validate_upload ora fa file.seek(0)
+        _, err = validate_upload(file)
         if err:
             return jsonify(error=err), 400
-        # file.seek(0) # Non più necessario
         image_bytes_content = file.read()
         prompts_json_str = request.form.get("prompts")
         model_name = request.form.get("model_name")
@@ -1288,6 +1238,7 @@ def create_app():
         return jsonify(task_id=task.id), 202
 
     @app_instance.route("/async/final_swap", methods=["POST"])
+    @login_required
     def async_final_swap():
         if (
             "target_image_high_res" not in request.files
@@ -1316,6 +1267,7 @@ def create_app():
         return jsonify(task_id=task.id), 202
 
     @app_instance.route("/api/models/download", methods=["POST"])
+    @login_required
     def api_download_model():
         data = request.get_json() or {}
         civitai_url = data.get("url")
@@ -1324,14 +1276,12 @@ def create_app():
         task = download_and_install_model_task.apply_async(args=[civitai_url])
         return jsonify(task_id=task.id), 202
 
-    @app_instance.route("/save_result_video", methods=["POST"])  # Usa app_instance
+    @app_instance.route("/save_result_video", methods=["POST"])
     def save_result_video():
         if not request.get_data():
             return jsonify(error="Missing video data"), 400
         try:
-            static_folder_path = (
-                current_app.static_folder if current_app else app_instance.static_folder
-            )
+            static_folder_path = current_app.static_folder
             temp_dir = os.path.join(static_folder_path, "temp")
             os.makedirs(temp_dir, exist_ok=True)
             input_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}.webm")
@@ -1361,25 +1311,30 @@ def create_app():
             logger.exception("Errore conversione video")
             return jsonify(error=str(e)), 500
 
-    @app_instance.route("/task_status/<task_id>")  # Usa app_instance
+    @app_instance.route("/task_status/<task_id>")
     def task_status(task_id):
         task = celery.AsyncResult(task_id)
-        response = {"state": task.state, "progress": 0}
+        response = {"state": task.state, "progress": 0, "status": "In attesa..."}
         if task.state == "PROGRESS":
-            response["progress"] = task.info.get("progress", 0)
+            info = task.info or {}
+            response["progress"] = info.get("progress", 0)
+            response["status"] = info.get("status", "Elaborazione...")
         elif task.state == "SUCCESS":
             response["progress"] = 100
+            response["status"] = "Completato"
             response["result"] = task.result
         elif task.state != "PENDING":
-            response["error"] = str(task.info)
+            info = task.info or {}
+            response["error"] = str(info.get("exc_message", "Errore sconosciuto"))
+            response["status"] = "Fallito"
         return jsonify(response)
 
-    @app_instance.after_request  # Usa app_instance
+    @app_instance.after_request
     def add_pna_header(response):
         response.headers["Access-Control-Allow-Private-Network"] = "true"
         return response
 
-    return app_instance  # Restituisci app_instance
+    return app_instance
 
 
 # Istanza per compatibilità con worker Celery e run.py
