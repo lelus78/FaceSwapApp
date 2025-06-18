@@ -15,9 +15,13 @@ def convert_model(input_file, output_name):
         logging.error("[ERRORE] File di input non trovato: %s", input_file)
         raise FileNotFoundError(f"Input file not found: {input_file}")
 
-    if os.path.exists(output_directory_path):
-        logging.warning("[ATTENZIONE] La cartella di output '%s' esiste già. Potrebbe essere sovrascritta.", output_directory_path)
-    
+    if os.path.isdir(output_directory_path):
+        logging.info(
+            "[*] Il modello convertito esiste già in '%s'. Nessuna conversione necessaria.",
+            output_directory_path,
+        )
+        return
+
     os.makedirs(output_directory_path, exist_ok=True)
 
     logging.info("[*] Caricamento del modello da: %s", input_file)

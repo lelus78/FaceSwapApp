@@ -33,12 +33,18 @@ import insightface.app
 import insightface.model_zoo
 from gfpgan import GFPGANer
 from rembg import remove
-from diffusers import (
-    StableDiffusionXLPipeline,
-    StableDiffusionXLControlNetInpaintPipeline,
-    ControlNetModel,
-    DPMSolverMultistepScheduler,
-)
+try:
+    from diffusers import (
+        StableDiffusionXLPipeline,
+        StableDiffusionXLControlNetInpaintPipeline,
+        ControlNetModel,
+        DPMSolverMultistepScheduler,
+    )
+except Exception:  # pragma: no cover - handled in tests with stubs
+    StableDiffusionXLPipeline = None
+    StableDiffusionXLControlNetInpaintPipeline = None
+    ControlNetModel = None
+    DPMSolverMultistepScheduler = None
 from controlnet_aux import CannyDetector
 
 # from PIL import Image, ImageDraw, ImageOps # Rimosso duplicato, ImageDraw già importato sopra
@@ -519,69 +525,124 @@ def process_final_swap(
 # --- TASKS CELERY --- (invariate, ma assicurati che usino le funzioni di processo corrette)
 @celery.task(bind=True)
 def create_scene_task(self, subject_bytes, prompt, model_name=None):
-    def update_progress(p):
-        self.update_state(state="PROGRESS", meta={"progress": p})
+    try:
+        self.update_state(
+            state="PROGRESS",
+            meta={"progress": 5, "status": "Avvio generazione scena..."},
+        )
 
-    final_image = process_create_scene(
-        subject_bytes, prompt, update_progress, model_name
-    )
-    buffered = io.BytesIO()
-    final_image.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    release_vram()
-    return {"progress": 100, "data": img_str}
+        def update_progress(p):
+            progress = 5 + int(p * 0.90)
+            self.update_state(state="PROGRESS", meta={"progress": progress})
+
+        final_image = process_create_scene(
+            subject_bytes, prompt, update_progress, model_name
+        )
+        buffered = io.BytesIO()
+        final_image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        release_vram()
+        self.update_state(state="SUCCESS", meta={"progress": 100})
+        return {"progress": 100, "data": img_str}
+    except Exception as e:
+        self.update_state(
+            state="FAILURE",
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
+        raise e
 
 
 @celery.task(bind=True)
 def detail_and_upscale_task(
     self, scene_image_bytes, enable_hires, tile_denoising_strength, model_name=None
 ):
-    def update_progress(p):
-        self.update_state(state="PROGRESS", meta={"progress": p})
+    try:
+        self.update_state(
+            state="PROGRESS",
+            meta={"progress": 5, "status": "Avvio dettaglio/upscale..."},
+        )
 
-    final_image = process_detail_and_upscale(
-        scene_image_bytes,
-        enable_hires,
-        tile_denoising_strength,
-        update_progress,
-        model_name,
-    )
-    buffered = io.BytesIO()
-    final_image.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    return {"progress": 100, "data": img_str}
+        def update_progress(p):
+            progress = 5 + int(p * 0.90)
+            self.update_state(state="PROGRESS", meta={"progress": progress})
+
+        final_image = process_detail_and_upscale(
+            scene_image_bytes,
+            enable_hires,
+            tile_denoising_strength,
+            update_progress,
+            model_name,
+        )
+        buffered = io.BytesIO()
+        final_image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        self.update_state(state="SUCCESS", meta={"progress": 100})
+        return {"progress": 100, "data": img_str}
+    except Exception as e:
+        self.update_state(
+            state="FAILURE",
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
+        raise e
 
 
 @celery.task(bind=True)
 def generate_all_parts_task(self, prompts_json_str, image_bytes, model_name=None):
-    prompts = json.loads(prompts_json_str)  # Parsa la stringa JSON
+    try:
+        self.update_state(
+            state="PROGRESS",
+            meta={"progress": 5, "status": "Avvio generazione parti..."},
+        )
+        prompts = json.loads(prompts_json_str)
 
-    def update_progress(p):
-        self.update_state(state="PROGRESS", meta={"progress": p})
+        def update_progress(p):
+            progress = 5 + int(p * 0.90)
+            self.update_state(state="PROGRESS", meta={"progress": progress})
 
-    final_image = process_generate_all_parts(
-        image_bytes, prompts, update_progress, model_name
-    )
-    buffered = io.BytesIO()
-    final_image.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    release_vram()
-    return {"progress": 100, "data": img_str}
+        final_image = process_generate_all_parts(
+            image_bytes, prompts, update_progress, model_name
+        )
+        buffered = io.BytesIO()
+        final_image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        release_vram()
+        self.update_state(state="SUCCESS", meta={"progress": 100})
+        return {"progress": 100, "data": img_str}
+    except Exception as e:
+        self.update_state(
+            state="FAILURE",
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
+        raise e
 
 
 @celery.task(bind=True)
 def final_swap_task(self, target_bytes, source_bytes, s_idx, t_idx):
-    def update_progress(p):
-        self.update_state(state="PROGRESS", meta={"progress": p})
+    try:
+        self.update_state(
+            state="PROGRESS",
+            meta={"progress": 5, "status": "Avvio face swap..."},
+        )
 
-    final_image = process_final_swap(
-        target_bytes, source_bytes, s_idx, t_idx, update_progress
-    )
-    buffered = io.BytesIO()
-    final_image.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    release_vram()
-    return {"progress": 100, "data": img_str}
+        def update_progress(p):
+            progress = 5 + int(p * 0.90)
+            self.update_state(state="PROGRESS", meta={"progress": progress})
+
+        final_image = process_final_swap(
+            target_bytes, source_bytes, s_idx, t_idx, update_progress
+        )
+        buffered = io.BytesIO()
+        final_image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        release_vram()
+        self.update_state(state="SUCCESS", meta={"progress": 100})
+        return {"progress": 100, "data": img_str}
+    except Exception as e:
+        self.update_state(
+            state="FAILURE",
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
+        raise e
 
 
 @celery.task(bind=True)
@@ -589,11 +650,15 @@ def download_and_install_model_task(self, civitai_url):
     """
     Task per scaricare e installare un modello da Civitai, mostrando la velocità di download.
     """
-    def update(p, status):
-        self.update_state(state="PROGRESS", meta={"progress": p, "status": status})
-
     try:
-        update(0, "Fetching model info...")
+        self.update_state(
+            state="PROGRESS",
+            meta={"progress": 5, "status": "Preparazione download modello..."},
+        )
+
+        def update(p, status):
+            self.update_state(state="PROGRESS", meta={"progress": p, "status": status})
+
         logger.info(f"Inizio download per URL: {civitai_url}")
         
         match = re.search(r"/models/(\d+)", civitai_url)
@@ -619,11 +684,26 @@ def download_and_install_model_task(self, civitai_url):
         base_name = os.path.splitext(original_filename)[0]
         safe_model_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", base_name).strip("-").lower() or f"model-{model_id}"
         
-        logger.info(f"Trovato modello '{safe_model_name}'. Inizio download...")
+        logger.info(f"Trovato modello '{safe_model_name}'.")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            temp_safetensors_path = os.path.join(tmpdir, "model.safetensors")
-            
+        output_dir = os.path.join("models", "checkpoints", safe_model_name)
+        downloads_dir = os.path.join("models", "downloads")
+        os.makedirs(downloads_dir, exist_ok=True)
+        cached_path = os.path.join(downloads_dir, f"{safe_model_name}.safetensors")
+
+        if os.path.isdir(output_dir):
+            logger.info("Modello già convertito. Niente da fare.")
+            self.update_state(
+                state="SUCCESS",
+                meta={"progress": 100, "status": "Model already installed."},
+            )
+            return {
+                "progress": 100,
+                "status": "Model already installed.",
+                "model_name": safe_model_name,
+            }
+
+        if not os.path.isfile(cached_path):
             update(5, "Starting download...")
             api_key = os.getenv("CIVITAI_API_KEY")
             headers = {}
@@ -631,51 +711,43 @@ def download_and_install_model_task(self, civitai_url):
                 headers["Authorization"] = f"Bearer {api_key}"
                 logger.info("Richiesta di download autenticata con chiave API.")
 
-            # Aggiunge gli "headers" alla richiesta
             with requests.get(download_url, stream=True, timeout=30, headers=headers) as r:
                 r.raise_for_status()
-                total_size = int(r.headers.get('content-length', 0))
-                
+                total_size = int(r.headers.get("content-length", 0))
                 start_time = time.time()
                 last_update_time = start_time
                 downloaded_since_last_update = 0
-                
-                with open(temp_safetensors_path, 'wb') as f:
+                with open(cached_path, "wb") as f:
                     downloaded_size = 0
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
                         chunk_size = len(chunk)
                         downloaded_size += chunk_size
                         downloaded_since_last_update += chunk_size
-                        
                         current_time = time.time()
-                        # Aggiorna lo stato ogni secondo per non sovraccaricare
                         if current_time - last_update_time >= 1:
                             progress = 5 + int((downloaded_size / total_size) * 90) if total_size > 0 else 5
-                            
                             elapsed_time = current_time - last_update_time
-                            speed = downloaded_since_last_update / elapsed_time / 1024 # KB/s
-                            status_msg = f"Downloading... {speed:.1f} KB/s"
-                            
-                            update(progress, status_msg)
+                            speed = downloaded_since_last_update / elapsed_time / 1024
+                            update(progress, f"Downloading... {speed:.1f} KB/s")
                             last_update_time = current_time
                             downloaded_since_last_update = 0
-            
-            logger.info("Download completato. Inizio conversione...")
-            update(98, "Converting model...")
-            
-            # Comando che usa l'interprete Python corretto
-            command = [sys.executable, "convert_safetensor.py", "--input", temp_safetensors_path, "--output", safe_model_name]
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
+        else:
+            update(5, "File già presente, salto download...")
 
-            if result.returncode != 0:
-                error_message = f"Conversione fallita: {result.stderr}"
-                logger.error(f"Errore dallo script di conversione:\n{error_message}")
-                raise Exception(error_message)
+        logger.info("Download disponibile. Inizio conversione...")
+        update(98, "Converting model...")
+
+        command = [sys.executable, "convert_safetensor.py", "--input", cached_path, "--output", safe_model_name]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            error_message = f"Conversione fallita: {result.stderr}"
+            logger.error(f"Errore dallo script di conversione:\n{error_message}")
+            raise Exception(error_message)
 
         logger.info("Conversione completata con successo.")
         release_vram()
-        update(100, "Completed!")
+        self.update_state(state="SUCCESS", meta={"progress": 100, "status": "Completed!"})
         return {"progress": 100, "status": "Completed!", "model_name": safe_model_name}
 
     except Exception as e:
