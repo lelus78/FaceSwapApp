@@ -15,7 +15,12 @@ import base64
 import torch
 from threading import Lock
 from celery import Celery
-from PIL import Image, UnidentifiedImageError, ImageDraw, ImageOps # ImageDraw importato
+try:
+    from PIL import Image, UnidentifiedImageError, ImageDraw, ImageOps
+except Exception:  # In ambiente di test PIL potrebbe essere stub
+    from PIL import Image, ImageDraw, ImageOps
+    class UnidentifiedImageError(Exception):
+        pass
 import insightface.app 
 import insightface.model_zoo 
 from gfpgan import GFPGANer
@@ -160,7 +165,7 @@ def ensure_face_restorer_is_loaded(): # ... (invariata)
     if face_restorer is None and os.path.exists(os.path.join("models", "GFPGANv1.4.pth")):
         face_restorer = GFPGANer(model_path=os.path.join("models", "GFPGANv1.4.pth"), upscale=1, arch="clean", channel_multiplier=2, bg_upsampler=None)
 
-def normalize_image(img: Image.Image, max_dim: int = MAX_IMAGE_DIMENSION) -> Image.Image: # ... (invariata)
+def normalize_image(img, max_dim: int = MAX_IMAGE_DIMENSION):
     img = ImageOps.exif_transpose(img)
     width, height = img.size
     if width > max_dim or height > max_dim:
@@ -406,3 +411,4 @@ def create_app(): # ... (invariata, assicurati che tutte le route siano definite
     return app_instance
 
 flask_app = create_app()
+app = flask_app
