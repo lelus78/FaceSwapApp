@@ -5,6 +5,7 @@ import io
 import logging
 import requests
 import traceback
+import tqdm
 import gzip
 import json
 import uuid
@@ -69,8 +70,8 @@ from app.auth import auth_bp, login_required
 from app.model_manager import model_bp
 from .forms import (
     SearchForm,
-)  # Assumendo che forms.py sia allo stesso livello di server.py
-from .user_model import init_db  # Assumendo che user_model.py sia allo stesso livello
+)
+from .user_model import init_db
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
@@ -99,7 +100,7 @@ ACTIVE_MODEL_FILE = os.path.join("models", "active_model.txt")
 loaded_model_name = None
 CFG_DETAIL_STEPS = 25
 MAX_IMAGE_DIMENSION = 1280
-MAX_UPLOAD_SIZE = 8 * 1024 * 1024  # 8MB limit
+MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25MB limit
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 
 # --- Inizializzazione Celery ---
@@ -134,7 +135,7 @@ def release_vram():
 
 def init_celery(
     app_instance,
-):  # Rinominato per evitare conflitto con variabile 'app' globale in create_app
+):
     celery.conf.update(
         broker_url=app_instance.config["CELERY_BROKER_URL"],
         result_backend=app_instance.config["CELERY_RESULT_BACKEND"],
@@ -142,7 +143,7 @@ def init_celery(
 
     class ContextTask(celery.Task):
         def __call__(self, *args, **kwargs):
-            with app_instance.app_context():  # Usa app_instance
+            with app_instance.app_context():
                 return super().__call__(*args, **kwargs)
 
     celery.Task = ContextTask
@@ -155,7 +156,6 @@ def validate_upload(file):
         file.seek(0, os.SEEK_END)
         file_size = file.tell()
         file.seek(0)
-        # Assicurati che current_app sia disponibile o usa un default
         limit_source = (
             current_app
             if current_app
@@ -171,7 +171,7 @@ def validate_upload(file):
                     None,
                     f"Formato immagine non supportato ({img.format}). Sono permessi: {', '.join(ALLOWED_FORMATS)}",
                 )
-        file.seek(0)  # Importante riavvolgere per letture successive
+        file.seek(0)
         filename = secure_filename(file.filename) if file.filename else "image.png"
         return filename, None
     except UnidentifiedImageError:
@@ -191,19 +191,49 @@ def ensure_yolo_parser_is_loaded():
 
 def ensure_sam_predictor_is_loaded():
     global sam_predictor
-    if sam_predictor is None and sam_model_registry:
-        model_type = "vit_l"
-        model_filename = "sam_vit_l_0b3195.pth"
-        model_path = os.path.abspath(os.path.join("models", model_filename))
-        if os.path.exists(model_path):
-            logger.info(
-                "Caricamento Segment Anything (SAM) - Modello: %s...", model_type
-            )
-            sam_model = sam_model_registry[model_type](checkpoint=model_path)
-            sam_model.to(device="cuda" if torch.cuda.is_available() else "cpu")
-            sam_predictor = SamPredictor(sam_model)
-        else:
-            logger.error("Modello SAM '%s' non trovato.", model_filename)
+    if sam_predictor is not None:
+        return
+
+    if not sam_model_registry:
+        logger.error("La libreria 'segment-anything' non è installata. Impossibile caricare o scaricare il modello SAM.")
+        return
+
+    model_type = "vit_l"
+    model_filename = "sam_vit_l_0b3195.pth"
+    models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models'))
+    os.makedirs(models_dir, exist_ok=True)
+    model_path = os.path.join(models_dir, model_filename)
+
+    if not os.path.exists(model_path):
+        logger.warning(f"Modello SAM '{model_filename}' non trovato. Avvio download automatico...")
+        url = f"https://dl.fbaipublicfiles.com/segment_anything/{model_filename}"
+        try:
+            with requests.get(url, stream=True, timeout=600) as r:
+                r.raise_for_status()
+                total_size = int(r.headers.get('content-length', 0))
+                with open(model_path, 'wb') as f, tqdm.tqdm(
+                    desc=model_filename,
+                    total=total_size,
+                    unit='iB',
+                    unit_scale=True,
+                    unit_divisor=1024,
+                ) as bar:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        size = f.write(chunk)
+                        bar.update(size)
+            logger.info(f"Download del modello SAM completato: {model_path}")
+        except Exception as e:
+            logger.error(f"Download del modello SAM fallito: {e}")
+            if os.path.exists(model_path):
+                os.remove(model_path)
+            return
+
+    logger.info("Caricamento Segment Anything (SAM) - Modello: %s...", model_type)
+    sam_model = sam_model_registry[model_type](checkpoint=model_path)
+    sam_model.to(device="cuda" if torch.cuda.is_available() else "cpu")
+    sam_predictor = SamPredictor(sam_model)
+    logger.info("Modello SAM caricato con successo.")
+
 
 
 def _get_active_model():
@@ -285,90 +315,218 @@ def ensure_face_restorer_is_loaded():
 
 # --- FUNZIONI HELPER E DI PROCESSO ---
 def normalize_image(
-    img: Image.Image, max_dim: int = MAX_IMAGE_DIMENSION
+    img: Image.Image, 
+    max_dim: int = MAX_IMAGE_DIMENSION, 
+    force_resize: bool = True 
 ) -> Image.Image:
     img = ImageOps.exif_transpose(img)
+    if not force_resize: 
+        logger.info("Normalizzazione immagine: ridimensionamento saltato come richiesto.")
+        return img
+
     width, height = img.size
     if width > max_dim or height > max_dim:
         if width > height:
             new_width, new_height = max_dim, int(height * (max_dim / width))
         else:
             new_height, new_width = max_dim, int(width * (max_dim / height))
-        new_width -= new_width % 8
-        new_height -= new_height % 8
-        logger.info("Immagine ridimensionata a %dx%d.", new_width, new_height)
+        
+        if new_width % 8 != 0:
+            new_width -= new_width % 8
+        if new_height % 8 != 0:
+            new_height -= new_height % 8
+            
+        if new_width == 0 or new_height == 0: 
+             logger.warning(f"Calcolo dimensioni post-ridimensionamento ha prodotto zero ({new_width}x{new_height}) per un'immagine {width}x{height}. Salto il ridimensionamento.")
+             return img
+
+        logger.info(f"Immagine ridimensionata da {width}x{height} a {new_width}x{new_height}.")
         img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    else:
+        logger.info(f"Immagine ({width}x{height}) già entro i limiti ({max_dim}x{max_dim}). Nessun ridimensionamento forzato applicato.")
     return img
 
 
-def make_mask(image, target_parts):
-    # Questa è una funzione di stub. Dovresti implementare la logica
-    # per creare una maschera basata su yolo_parser e sam_predictor.
-    logger.warning("La funzione 'make_mask' non è implementata e restituirà una maschera vuota.")
-    return Image.new('L', image.size, 0)
+def make_mask(image: Image.Image, target_parts: tuple[str, ...]) -> Image.Image:
+    """
+    Genera una maschera di segmentazione per le parti specificate usando YOLO e SAM.
+    Salva le maschere di debug se DEBUG_MODE è attivo.
+    """
+    global yolo_parser, sam_predictor
+    logger.info(f"Entering make_mask. DEBUG_MODE is currently: {DEBUG_MODE}") 
+
+    if sam_predictor is None:
+        logger.error("ERRORE CRITICO: Il modello SAM (Segment Anything) non è stato caricato.")
+        logger.error("Assicurati che il file 'sam_vit_l_0b3195.pth' sia presente nella cartella 'models'.")
+        return Image.new('L', image.size, 0)
+
+    open_cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+
+    if yolo_parser is None:
+        logger.error("ERRORE CRITICO: yolo_parser non è caricato prima di chiamare make_mask.")
+        return Image.new('L', image.size, 0)
+
+    results = yolo_parser(image, verbose=False)[0]
+    boxes = []
+
+    for i, class_id in enumerate(results.boxes.cls):
+        part_name = results.names[int(class_id)]
+        if part_name in target_parts:
+            box_coords = results.boxes.xyxy[i].cpu().numpy().astype(int)
+            boxes.append(box_coords)
+
+    if not boxes:
+        logger.warning(f"Nessuna bounding box trovata per le parti {target_parts} con YOLO. Non salverò maschere di debug.") 
+        return Image.new('L', image.size, 0)
+
+    sam_predictor.set_image(cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2RGB))
+    input_boxes = np.array(boxes)
+
+    masks_tensor, scores, logits = sam_predictor.predict_torch(
+        point_coords=None,
+        point_labels=None,
+        boxes=torch.tensor(input_boxes, device=sam_predictor.device),
+        multimask_output=False,
+    )
+
+    if masks_tensor.shape[0] == 0:
+        logger.warning(f"SAM non ha prodotto maschere per le parti {target_parts}. Non salverò maschere di debug.") 
+        return Image.new('L', image.size, 0)
+
+    final_mask_np_bool = np.zeros(masks_tensor.shape[2:], dtype=bool)
+    for i in range(masks_tensor.shape[0]):
+        current_mask_np = masks_tensor[i].squeeze().cpu().numpy()
+        final_mask_np_bool = np.logical_or(final_mask_np_bool, current_mask_np)
+
+    raw_sam_pil_mask = Image.fromarray(final_mask_np_bool.astype(np.uint8) * 255, 'L')
+
+    dilation_kernel = np.ones((5, 5), np.uint8)
+    dilated_mask_np = cv2.dilate(np.array(raw_sam_pil_mask), dilation_kernel, iterations=1)
+    blurred_mask_np = cv2.GaussianBlur(dilated_mask_np, (5, 5), 0)
+    final_processed_pil_mask = Image.fromarray(blurred_mask_np)
+
+    logger.info(f"Maschera generata con successo per le parti: {target_parts}")
+
+    if DEBUG_MODE:
+        logger.info("DEBUG_MODE is True. Attempting to save debug masks.") 
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            debug_save_path = os.path.join(script_dir, "static", "debug_masks")
+            logger.info(f"Calculated script_dir: {script_dir}") 
+            logger.info(f"Calculated debug_save_path for masks: {debug_save_path}") 
+            
+            os.makedirs(debug_save_path, exist_ok=True)
+            
+            if not os.path.isdir(debug_save_path):
+                logger.error(f"ERRORE: La directory di debug {debug_save_path} non esiste e non è stato possibile crearla. Controllare i permessi.")
+                return final_processed_pil_mask 
+            if not os.access(debug_save_path, os.W_OK):
+                logger.error(f"ERRORE: La directory di debug {debug_save_path} non è scrivibile. Controllare i permessi.")
+                return final_processed_pil_mask
+
+            timestamp_uuid = uuid.uuid4().hex[:6]
+            parts_str = '_'.join(target_parts)
+            
+            raw_mask_filename = f"debug_mask_raw_{parts_str}_{timestamp_uuid}.png"
+            raw_mask_filepath = os.path.join(debug_save_path, raw_mask_filename)
+            logger.info(f"Attempting to save RAW mask to: {raw_mask_filepath}") 
+            raw_sam_pil_mask.save(raw_mask_filepath)
+            logger.info(f"Maschera RAW di SAM (prima del post-processing) salvata in: {raw_mask_filepath}")
+            logger.info(f"  Per visualizzarla (se il server serve 'static'), prova l'URL (esempio): /static/debug_masks/{raw_mask_filename}")
+
+
+            processed_mask_filename = f"debug_mask_processed_{parts_str}_{timestamp_uuid}.png"
+            processed_mask_filepath = os.path.join(debug_save_path, processed_mask_filename)
+            logger.info(f"Attempting to save PROCESSED mask to: {processed_mask_filepath}") 
+            final_processed_pil_mask.save(processed_mask_filepath)
+            logger.info(f"Maschera PROCESSATA (dopo dilatazione/sfocatura) salvata in: {processed_mask_filepath}")
+            logger.info(f"  Per visualizzarla (se il server serve 'static'), prova l'URL (esempio): /static/debug_masks/{processed_mask_filename}")
+
+        except Exception as e:
+            logger.error(f"Impossibile salvare le maschere di debug: {e}")
+            logger.error(traceback.format_exc())
+    else:
+        logger.info("DEBUG_MODE is False. Skipping saving of debug masks.") 
+
+    return final_processed_pil_mask
 
 
 def process_generate_all_parts(image_bytes, prompts, progress_cb=None, model_name=None):
     ensure_pipeline_is_loaded(model_name)
     ensure_yolo_parser_is_loaded()
     ensure_sam_predictor_is_loaded()
+    # Per la generazione parti, il ridimensionamento è solitamente desiderato (force_resize=True è default)
     current_image = normalize_image(Image.open(io.BytesIO(image_bytes)).convert("RGB"))
+    logger.info(f"Process Generate All Parts: Dimensione immagine iniziale per generazione parti: {current_image.size}")
     valid_prompts = [p for p in prompts.values() if p]
     total = len(valid_prompts) or 1
     completed = 0
     for part_name, prompt_text in prompts.items():
         if not prompt_text:
             continue
+        
+        logger.info(f"Inizio elaborazione per la parte: {part_name}")
+        # make_mask riceve l'immagine già normalizzata (potenzialmente ridimensionata)
         mask = make_mask(current_image, (part_name,))
-        if mask:
-            w, h = current_image.size
-            canny_map = canny_detector(
-                current_image, low_threshold=50, high_threshold=150
+        
+        if not mask.getbbox():
+            logger.warning(f"Maschera per '{part_name}' è vuota. Salto questa parte.")
+            completed += 1
+            if progress_cb:
+                progress_cb(int(completed / total * 100))
+            continue
+
+        w, h = current_image.size
+        canny_map = canny_detector(
+            current_image, low_threshold=50, high_threshold=150
+        )
+        if canny_map.size != current_image.size:
+            canny_map = canny_map.resize(
+                current_image.size, Image.Resampling.LANCZOS
             )
-            if canny_map.size != current_image.size:
-                canny_map = canny_map.resize(
-                    current_image.size, Image.Resampling.LANCZOS
-                )
-            canny_array = np.array(canny_map)
-            mask_resized = mask.resize((w, h), Image.Resampling.LANCZOS)
-            mask_array = np.array(mask_resized.convert("L"))
-            canny_array[mask_array > 128] = 0
-            control_image = Image.fromarray(canny_array)
-            if DEBUG_MODE and "current_app" in globals() and current_app:
-                temp_dir_base = current_app.root_path if current_app else "."
-                control_image.save(
-                    os.path.join(
-                        temp_dir_base, "temp", f"debug_control_{part_name}.png"
-                    )
-                )
-            current_image = pipe(
-                prompt=prompt_text,
-                image=current_image,
-                mask_image=mask_resized,
-                control_image=control_image,
-                width=w,
-                height=h,
-                controlnet_conditioning_scale=0.8,
-                num_inference_steps=CFG_DETAIL_STEPS,
-                strength=1.0,
-                guidance_scale=10,
-            ).images[0]
+        canny_array = np.array(canny_map)
+        mask_resized = mask.resize((w, h), Image.Resampling.LANCZOS)
+        mask_array = np.array(mask_resized.convert("L"))
+        canny_array[mask_array > 128] = 0
+        control_image = Image.fromarray(canny_array)
+        
+        if DEBUG_MODE:
+            temp_dir_base = current_app.root_path if current_app else "."
+            temp_dir = os.path.join(temp_dir_base, "temp")
+            os.makedirs(temp_dir, exist_ok=True)
+            control_image.save(os.path.join(temp_dir, f"debug_control_{part_name}.png"))
+        
+        current_image = pipe(
+            prompt=prompt_text,
+            image=current_image,
+            mask_image=mask_resized,
+            control_image=control_image,
+            width=w,
+            height=h,
+            controlnet_conditioning_scale=0.8,
+            num_inference_steps=CFG_DETAIL_STEPS,
+            strength=1.0,
+            guidance_scale=10,
+        ).images[0]
+        
+        logger.info(f"Completata elaborazione per la parte: {part_name}")
         completed += 1
         if progress_cb:
             progress_cb(int(completed / total * 100))
+            
     return current_image
 
 
 def process_create_scene(subject_bytes, prompt, progress_cb=None, model_name=None):
     ensure_pipeline_is_loaded(model_name)
 
-    # --- INIZIO BLOCCO CORRETTO ---
     def progress_callback(step, timestep, latents):
         if progress_cb:
             progress_cb(int((step + 1) / CFG_DETAIL_STEPS * 100))
-    # --- FINE BLOCCO CORRETTO ---
 
+    # Per la creazione scene, il ridimensionamento è solitamente desiderato
     subject = normalize_image(Image.open(io.BytesIO(subject_bytes)).convert("RGB"))
+    logger.info(f"Process Create Scene: Dimensione immagine soggetto: {subject.size}")
     mask = remove(subject, only_mask=True, post_process_mask=True)
     mask = ImageOps.invert(mask.convert("L"))
     canny_map = canny_detector(subject, low_threshold=50, high_threshold=150)
@@ -382,10 +540,8 @@ def process_create_scene(subject_bytes, prompt, progress_cb=None, model_name=Non
         control_image=canny_map,
         width=subject.width,
         height=subject.height,
-        # --- INIZIO BLOCCO CORRETTO ---
         callback=progress_callback,
         callback_steps=1,
-        # --- FINE BLOCCO CORRETTO ---
         controlnet_conditioning_scale=0.8,
         num_inference_steps=CFG_DETAIL_STEPS,
         strength=1.0,
@@ -407,9 +563,11 @@ def process_detail_and_upscale(
     global pipe, canny_detector
     try:
         ensure_pipeline_is_loaded(model_name)
+        # Per dettaglio e upscale, il ridimensionamento è solitamente desiderato
         scene = normalize_image(
             Image.open(io.BytesIO(scene_image_bytes)).convert("RGB")
         )
+        logger.info(f"Process Detail and Upscale: Dimensione immagine scena: {scene.size}")
         if enable_hires:
             logger.info("Avvio Hi-Res fix (RealESRGAN)...")
             if progress_cb:
@@ -434,6 +592,7 @@ def process_detail_and_upscale(
             scene_np = cv2.cvtColor(np.array(scene), cv2.COLOR_RGB2BGR)
             output, _ = upsampler.enhance(scene_np, outscale=2)
             scene = Image.fromarray(cv2.cvtColor(output, cv2.COLOR_BGR2RGB))
+            logger.info(f"Dimensione scena dopo RealESRGAN: {scene.size}")
             if progress_cb:
                 progress_cb(50)
 
@@ -442,12 +601,10 @@ def process_detail_and_upscale(
         if canny_map.size != scene.size:
             canny_map = canny_map.resize(scene.size, Image.Resampling.LANCZOS)
 
-        # --- INIZIO BLOCCO CORRETTO ---
         def detailing_progress_callback(step, timestep, latents):
             if progress_cb:
                 progress = 50 + int((step + 1) / CFG_DETAIL_STEPS * 45)
                 progress_cb(progress)
-        # --- FINE BLOCCO CORRETTO ---
 
         result = pipe(
             prompt="",
@@ -460,10 +617,8 @@ def process_detail_and_upscale(
             num_inference_steps=CFG_DETAIL_STEPS,
             strength=float(tile_denoising_strength),
             guidance_scale=5,
-            # --- INIZIO BLOCCO CORRETTO ---
             callback=detailing_progress_callback,
             callback_steps=1,
-            # --- FINE BLOCCO CORRETTO ---
         ).images[0]
 
         if progress_cb:
@@ -480,17 +635,32 @@ def process_final_swap(
     ensure_face_analyzer_is_loaded()
     ensure_face_swapper_is_loaded()
     ensure_face_restorer_is_loaded()
-    target_pil = normalize_image(Image.open(io.BytesIO(target_bytes)).convert("RGB"))
-    source_pil = normalize_image(Image.open(io.BytesIO(source_bytes)).convert("RGB"))
+
+    logger.info("Process Final Swap: Caricamento immagine target senza forzare il ridimensionamento.")
+    target_pil = normalize_image(Image.open(io.BytesIO(target_bytes)).convert("RGB"), force_resize=False)
+    logger.info(f"Dimensione immagine target dopo normalize_image (no resize): {target_pil.size}")
+
+    logger.info("Process Final Swap: Caricamento immagine sorgente senza forzare il ridimensionamento.")
+    source_pil = normalize_image(Image.open(io.BytesIO(source_bytes)).convert("RGB"), force_resize=False)
+    logger.info(f"Dimensione immagine sorgente dopo normalize_image (no resize): {source_pil.size}")
+
     target_cv = cv2.cvtColor(np.array(target_pil), cv2.COLOR_RGB2BGR)
     source_cv = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR)
+
+    logger.info(f"Dimensioni CV target: {target_cv.shape[:2][::-1]}, sorgente: {source_cv.shape[:2][::-1]}")
 
     target_faces = face_analyzer.get(target_cv)
     source_faces = face_analyzer.get(source_cv)
 
-    if not target_faces or not source_faces:
-        raise ValueError("Volti non trovati nell'immagine sorgente o di destinazione.")
+    if not target_faces:
+        raise ValueError("Nessun volto trovato nell'immagine di destinazione (target).")
+    if not source_faces:
+        raise ValueError("Nessun volto trovato nell'immagine sorgente (source).")
+    
+    logger.info(f"Trovati {len(target_faces)} volti nel target, {len(source_faces)} volti nella sorgente.")
+
     if source_idx >= len(source_faces) or target_idx >= len(target_faces):
+        logger.error(f"Indice volto non valido. Source Idx: {source_idx} (max: {len(source_faces)-1}), Target Idx: {target_idx} (max: {len(target_faces)-1})")
         raise IndexError("Indice del volto non valido.")
 
     result_img = face_swapper.get(
@@ -498,14 +668,20 @@ def process_final_swap(
     )
     if progress_cb:
         progress_cb(50)
+    
     if face_restorer:
+        logger.info("Avvio face restoration (GFPGAN)...")
         _, _, result_img = face_restorer.enhance(
-            result_img,
+            result_img, 
             has_aligned=False,
-            only_center_face=False,
+            only_center_face=False, 
             paste_back=True,
             weight=0.8,
         )
+        logger.info("Face restoration completata.")
+    else:
+        logger.info("Face restorer non caricato o disabilitato, salto il passaggio di enhance.")
+
     if progress_cb:
         progress_cb(100)
     return Image.fromarray(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
@@ -709,26 +885,34 @@ def download_and_install_model_task(self, civitai_url):
             with requests.get(download_url, stream=True, timeout=30, headers=headers) as r:
                 r.raise_for_status()
                 total_size = int(r.headers.get("content-length", 0))
-                start_time = time.time()
-                last_update_time = start_time
-                downloaded_since_last_update = 0
-                with open(cached_path, "wb") as f:
+                # start_time = time.time()
+                # last_update_time = start_time
+                # downloaded_since_last_update = 0
+                with open(cached_path, "wb") as f, tqdm.tqdm(
+                    desc=original_filename,
+                    total=total_size,
+                    unit='iB',
+                    unit_scale=True,
+                    unit_divisor=1024,
+                ) as bar:
                     downloaded_size = 0
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-                        chunk_size = len(chunk)
-                        downloaded_size += chunk_size
-                        downloaded_since_last_update += chunk_size
-                        current_time = time.time()
-                        if current_time - last_update_time >= 1:
-                            progress = 5 + int((downloaded_size / total_size) * 90) if total_size > 0 else 5
-                            elapsed_time = current_time - last_update_time
-                            speed = downloaded_since_last_update / elapsed_time / 1024
-                            update(progress, f"Downloading... {speed:.1f} KB/s")
-                            last_update_time = current_time
-                            downloaded_since_last_update = 0
+                        chunk_len = len(chunk)
+                        bar.update(chunk_len)
+                        downloaded_size += chunk_len
+                        # current_time = time.time()
+                        # if current_time - last_update_time >= 1: # Update progress for Celery every second
+                        #     progress = 5 + int((downloaded_size / total_size) * 90) if total_size > 0 else 5
+                        #     # elapsed_time = current_time - last_update_time
+                        #     # speed = downloaded_since_last_update / elapsed_time / 1024 if elapsed_time > 0 else 0
+                        #     update(progress, f"Downloading... {bar.n/bar.total*100:.1f}%")
+                        #     last_update_time = current_time
+                        #     downloaded_since_last_update = 0
+            update(95, "Download complete.") # Final update for download part
+
         else:
-            update(5, "File già presente, salto download...")
+            update(95, "File già presente, salto download...")
 
         logger.info("Download disponibile. Inizio conversione...")
         update(98, "Converting model...")
@@ -738,6 +922,8 @@ def download_and_install_model_task(self, civitai_url):
         if result_proc.returncode != 0:
             error_message = f"Conversione fallita: {result_proc.stderr}"
             logger.error(f"Errore dallo script di conversione:\n{error_message}")
+            if os.path.exists(cached_path): # Pulizia file scaricato se conversione fallisce
+                 os.remove(cached_path)
             raise Exception(error_message)
 
         logger.info("Conversione completata con successo.")
@@ -778,7 +964,6 @@ def create_app():
     app_instance.register_blueprint(auth_bp)
     app_instance.register_blueprint(model_bp)
 
-    # --- DEFINIZIONE ROUTE ---
     @app_instance.route("/")
     def home():
         return render_template("index.html", username=session.get("user_id"))
@@ -946,9 +1131,11 @@ def create_app():
             _, err = validate_upload(file)
             if err:
                 return jsonify(error=err), 400
+            # Per prepare_subject, il ridimensionamento è solitamente desiderato
             subject = normalize_image(
                 Image.open(io.BytesIO(file.read())).convert("RGBA")
             )
+            logger.info(f"Prepare Subject: Dimensione immagine soggetto: {subject.size}")
             processed = remove(subject)
             buf = io.BytesIO()
             processed.save(buf, format="PNG")
@@ -968,45 +1155,15 @@ def create_app():
             if not data or "image_data" not in data:
                 return jsonify(error="image_data missing"), 400
             system_prompt = "Sei un esperto prompt engineer. Migliora il seguente prompt in italiano basandoti sull'immagine fornita. Restituisci solo il prompt ottimizzato."
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {
-                                "text": system_prompt
-                                + "\nUtente: "
-                                + data.get("prompt_text", "")
-                            },
-                            {
-                                "inlineData": {
-                                    "mimeType": "image/jpeg",
-                                    "data": data["image_data"],
-                                }
-                            },
-                        ]
-                    }
-                ]
-            }
-            resp = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}",
-                headers={"Content-Type": "application/json"},
-                json=payload,
-                timeout=10,
-            )
+            payload = { "contents": [ { "parts": [ { "text": system_prompt + "\nUtente: " + data.get("prompt_text", "") }, { "inlineData": { "mimeType": "image/jpeg", "data": data["image_data"], } }, ] } ] }
+            resp = requests.post( f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}", headers={"Content-Type": "application/json"}, json=payload, timeout=10, )
             resp.raise_for_status()
             result = resp.json()
             if result.get("candidates"):
-                return jsonify(
-                    enhanced_prompt=result["candidates"][0]["content"]["parts"][0][
-                        "text"
-                    ].strip('"')
-                )
+                return jsonify( enhanced_prompt=result["candidates"][0]["content"]["parts"][0][ "text" ].strip('"') )
             return jsonify(error="No prompt generated"), 500
         except requests.Timeout:
-            return (
-                jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."),
-                504,
-            )
+            return ( jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."), 504, )
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=f"Gemini error: {e}"), 500
@@ -1021,45 +1178,15 @@ def create_app():
             if not data or "image_data" not in data:
                 return jsonify(error="image_data missing"), 400
             system_prompt = f"Migliora il prompt per la parte '{data.get('part_name', 'subject')}'. Rispondi in italiano con un testo adatto a Stable Diffusion. Restituisci solo il prompt ottimizzato."
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {
-                                "text": system_prompt
-                                + "\nUtente: "
-                                + data.get("prompt_text", "")
-                            },
-                            {
-                                "inlineData": {
-                                    "mimeType": "image/jpeg",
-                                    "data": data["image_data"],
-                                }
-                            },
-                        ]
-                    }
-                ]
-            }
-            resp = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}",
-                headers={"Content-Type": "application/json"},
-                json=payload,
-                timeout=10,
-            )
+            payload = { "contents": [ { "parts": [ { "text": system_prompt + "\nUtente: " + data.get("prompt_text", "") }, { "inlineData": { "mimeType": "image/jpeg", "data": data["image_data"], } }, ] } ] }
+            resp = requests.post( f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}", headers={"Content-Type": "application/json"}, json=payload, timeout=10, )
             resp.raise_for_status()
             result = resp.json()
             if result.get("candidates"):
-                return jsonify(
-                    enhanced_prompt=result["candidates"][0]["content"]["parts"][0][
-                        "text"
-                    ].strip('"')
-                )
+                return jsonify( enhanced_prompt=result["candidates"][0]["content"]["parts"][0][ "text" ].strip('"') )
             return jsonify(error="No prompt generated"), 500
         except requests.Timeout:
-            return (
-                jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."),
-                504,
-            )
+            return ( jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."), 504, )
         except Exception as e:
             traceback.print_exc()
             return jsonify(error=f"Gemini error: {e}"), 500
@@ -1077,9 +1204,11 @@ def create_app():
                     return jsonify(error=err), 400
 
                 ensure_yolo_parser_is_loaded()
+                # Per analyze_parts, il ridimensionamento è solitamente desiderato
                 image_pil = normalize_image(
                     Image.open(io.BytesIO(file.read())).convert("RGB")
                 )
+                logger.info(f"Analyze Parts: Dimensione immagine per analisi parti: {image_pil.size}")
                 results = yolo_parser(image_pil)[0]
                 return jsonify(
                     parts=sorted(
@@ -1092,7 +1221,7 @@ def create_app():
                 traceback.print_exc()
                 return jsonify(error=str(e)), 500
             finally:
-                yolo_parser = None
+                yolo_parser = None # Considera se rilasciare o meno
                 release_vram()
 
     @app_instance.route("/detect_faces", methods=["POST"])
@@ -1109,27 +1238,30 @@ def create_app():
                     return jsonify({"error": err}), 400
 
                 image_bytes_content = file.read()
+                
+                logger.info("Detect Faces: Caricamento immagine senza forzare il ridimensionamento.")
                 image_pil = normalize_image(
-                    Image.open(io.BytesIO(image_bytes_content)).convert("RGB")
+                    Image.open(io.BytesIO(image_bytes_content)).convert("RGB"),
+                    force_resize=False 
                 )
+                logger.info(f"Dimensione immagine per rilevamento volti: {image_pil.size}")
                 img_w, img_h = image_pil.size
-
-                temp_dir_base = current_app.root_path
+                
+                temp_dir_base = current_app.root_path if current_app else "." # Assicurati che current_app sia disponibile
                 temp_debug_dir = os.path.join(temp_dir_base, "temp")
                 os.makedirs(temp_debug_dir, exist_ok=True)
-
-                debug_input_path = os.path.join(
-                    temp_debug_dir, "debug_detection_input.png"
-                )
+                debug_input_path = os.path.join(temp_debug_dir, f"debug_detection_input_{uuid.uuid4().hex[:6]}.png")
                 image_pil.save(debug_input_path)
-                logger.info(
-                    f"Immagine di input per il rilevamento salvata in: {debug_input_path}"
-                )
+                logger.info(f"Immagine di input per il rilevamento volti (dim: {image_pil.size}) salvata in: {debug_input_path}")
 
                 ensure_face_analyzer_is_loaded()
                 faces = face_analyzer.get(
                     cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
                 )
+                
+                if not faces:
+                    logger.warning(f"Nessun volto rilevato nell'immagine {debug_input_path}")
+                    return jsonify({"faces": []}) 
 
                 image_pil_with_boxes = image_pil.copy()
                 draw = ImageDraw.Draw(image_pil_with_boxes)
@@ -1150,24 +1282,23 @@ def create_app():
 
                     x1_padded = max(0, x1 - ps)
                     y1_padded = max(0, y1 - pt)
-                    x2_padded = min(img_w, x2 + ps)
+                    x2_padded = min(img_w, x2 + ps) 
                     y2_padded = min(img_h, y2 + pb)
 
                     padded_bbox = [x1_padded, y1_padded, x2_padded, y2_padded]
                     processed_faces_for_json.append({"id": i, "bbox": padded_bbox})
                     draw.rectangle(padded_bbox, outline="lime", width=3)
                     draw.text(
-                        (padded_bbox[0], padded_bbox[1] - 12),
-                        f"Face {i} (Padded)",
+                        (padded_bbox[0], padded_bbox[1] - 12 if padded_bbox[1] - 12 > 0 else padded_bbox[1] + 2), 
+                        f"Face {i}", 
                         fill="lime",
                     )
-
-                debug_output_path = os.path.join(
-                    temp_debug_dir, "server_detection_output_padded.png"
-                )
+                
+                debug_output_filename = f"server_detection_output_{uuid.uuid4().hex[:6]}.png"
+                debug_output_path = os.path.join(temp_debug_dir, debug_output_filename)
                 image_pil_with_boxes.save(debug_output_path)
                 logger.info(
-                    f"Immagine con BBOX PADDED DAL SERVER salvata in: {debug_output_path}"
+                    f"Immagine con BBOX (dim: {image_pil_with_boxes.size}) DAL SERVER salvata in: {debug_output_path}"
                 )
 
                 logger.info(
@@ -1184,8 +1315,9 @@ def create_app():
                     500,
                 )
             finally:
-                face_analyzer = None
-                release_vram()
+                # face_analyzer = None # Commentato per ora, valuta tu
+                # release_vram()     # Commentato per ora, valuta tu
+                pass
 
     @app_instance.route("/async/create_scene", methods=["POST"])
     @login_required
