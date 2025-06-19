@@ -60,4 +60,10 @@ Questo agente viene utilizzato all'interno del "Meme Studio" per generare automa
     -   *Per le didascalie*: *"Genera una singola, breve e brillante didascalia per l'immagine fornita con un tono [scherzoso]..."*
     -   *Per i tag*: *"Genera da 3 a 5 brevi tag in italiano per l'immagine fornita. Rispondi con una lista separata da virgole..."*
 3.  **Chiamata a Ollama**: Invia la richiesta all'istanza locale di Ollama.
-4.  **Restituzione dei Contenuti**: Il testo generato (didascalia o tag) viene restituito al frontend e visualizzato nell'editor del Meme Studio.
+4.  **Restituzione dei Contenuti**: Il testo generato (didascalia o tag) viene restituito al frontend e visualizzato nell'editor del Meme Studio
+
+---
+
+## Frontend Agent
+
+L'interfaccia ora è sviluppata con Vue 3 e Pinia. Il progetto Vite risiede in `app/static` e produce i file compilati nella cartella `dist` servita da Flask. Ogni step del workflow è implementato in componenti Vue dedicati.

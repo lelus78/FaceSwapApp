@@ -158,3 +158,14 @@ Il worker inizierà ad ascoltare per nuovi task di generazione immagini.
 ├── run.py                # Script per avviare il server Flask
 └── ...
 ```
+## Frontend Vue.js
+
+La cartella `app/static` contiene un progetto Vite con Vue 3 e Pinia. Per avviare l'interfaccia in modalità sviluppo:
+
+```bash
+cd app/static
+npm install
+npm run dev
+```
+
+Il comando `npm run build` produce i file nella cartella `app/static/dist` servita da Flask.
