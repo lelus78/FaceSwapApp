@@ -16,6 +16,7 @@ import torch
 import shutil
 import tempfile
 import re
+import onnxruntime as ort
 from threading import Lock
 import numpy as np
 import cv2
@@ -347,108 +348,116 @@ def normalize_image(
     return img
 
 
-def make_mask(image: Image.Image, target_parts: tuple[str, ...]) -> Image.Image:
-    """
-    Genera una maschera di segmentazione per le parti specificate usando YOLO e SAM.
-    Salva le maschere di debug se DEBUG_MODE è attivo.
-    """
-    global yolo_parser, sam_predictor
-    logger.info(f"Entering make_mask. DEBUG_MODE is currently: {DEBUG_MODE}") 
+# ---------------------------------------------------------------
+# Definiamo la radice del progetto per trovare i modelli
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Directory 'models' parallela alla cartella 'app'
+MODEL_DIR = os.path.normpath(os.path.join(BASE_DIR, "models"))
+# Nome del file ONNX e config JSON
+MODEL_FILE = os.environ.get("FACEPARSING_MODEL_FILE", "model.onnx")
+MODEL_PATH = os.path.join(MODEL_DIR, MODEL_FILE)
+CONFIG_PATH = os.path.join(MODEL_DIR, "config.json")
 
-    if sam_predictor is None:
-        logger.error("ERRORE CRITICO: Il modello SAM (Segment Anything) non è stato caricato.")
-        logger.error("Assicurati che il file 'sam_vit_l_0b3195.pth' sia presente nella cartella 'models'.")
-        return Image.new('L', image.size, 0)
+# ---------------------------------------------------------------
+# Caricamento label da config.json o fallback
+if os.path.exists(CONFIG_PATH):
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+        cfg = json.load(f)
+    ID2LABEL = {int(k): v for k, v in cfg.get("id2label", {}).items()}
+else:
+    # default ID2LABEL se mancante (copia da Hugging Face face-parsing)
+    ID2LABEL = {
+        0: "background", 1: "skin", 2: "nose", 3: "eye_g",
+        4: "l_eye", 5: "r_eye", 6: "l_brow", 7: "r_brow",
+        8: "l_ear", 9: "r_ear", 10: "mouth", 11: "u_lip",
+        12: "l_lip", 13: "hair", 14: "hat", 15: "ear_r",
+        16: "neck_l", 17: "neck", 18: "cloth"
+    }
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump({"id2label": ID2LABEL}, f, indent=2, ensure_ascii=False)
+    print(f"⚙️ creato config.json con id2label di default in {CONFIG_PATH}")
 
-    open_cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+# Stampiamo le label caricate per verifica
+print("📋 ID2LABEL mapping:")
+for k, v in ID2LABEL.items(): print(f"  {k}: {v}")
 
-    if yolo_parser is None:
-        logger.error("ERRORE CRITICO: yolo_parser non è caricato prima di chiamare make_mask.")
-        return Image.new('L', image.size, 0)
+# Costruzione mapping inverso e alias 'outfit' -> 'cloth'
+LABEL_TO_IDX = {v: k for k, v in ID2LABEL.items()}
+LABEL_TO_IDX['outfit'] = LABEL_TO_IDX.get('cloth')
 
-    results = yolo_parser(image, verbose=False)[0]
-    boxes = []
+# ---------------------------------------------------------------
+# Inizializziamo ONNX Runtime
+if not os.path.isfile(MODEL_PATH):
+    raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
+faceparsing_session = ort.InferenceSession(MODEL_PATH)
 
-    for i, class_id in enumerate(results.boxes.cls):
-        part_name = results.names[int(class_id)]
-        if part_name in target_parts:
-            box_coords = results.boxes.xyxy[i].cpu().numpy().astype(int)
-            boxes.append(box_coords)
+# ==========================================================================
+# Funzione principale: genera maschere multiple
+# Restituisce un dict: {parte: PIL.Image maschera 'L'}
+def make_masks(image: Image.Image, parts: tuple[str, ...]) -> dict[str, Image.Image]:
+    debug_id = uuid.uuid4().hex
+    debug_dir = os.path.join(BASE_DIR, '..', 'debug')
+    os.makedirs(debug_dir, exist_ok=True)
 
-    if not boxes:
-        logger.warning(f"Nessuna bounding box trovata per le parti {target_parts} con YOLO. Non salverò maschere di debug.") 
-        return Image.new('L', image.size, 0)
+    # Preprocess input
+    w, h = image.size
+    inp_shape = faceparsing_session.get_inputs()[0].shape
+    print(f"🛠 Input shape from ONNX: {inp_shape}")
+    # Se dimensione dinamica, fallback su 512
+    side = inp_shape[-1] if isinstance(inp_shape[-1], int) else 512
+    img_resized = image.resize((side, side))
+    arr = np.array(img_resized, dtype=np.float32) / 255.0
+    inp = arr.transpose(2, 0, 1)[None]
 
-    sam_predictor.set_image(cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2RGB))
-    input_boxes = np.array(boxes)
+    # Inferenza ONNX
+    logits = faceparsing_session.run(None, {faceparsing_session.get_inputs()[0].name: inp})[0][0]
+    class_map = np.argmax(logits, axis=0).astype(np.uint8)
+    class_map = cv2.resize(class_map, (w, h), interpolation=cv2.INTER_NEAREST)
 
-    masks_tensor, scores, logits = sam_predictor.predict_torch(
-        point_coords=None,
-        point_labels=None,
-        boxes=torch.tensor(input_boxes, device=sam_predictor.device),
-        multimask_output=False,
-    )
+    # Debug: classi uniche trovate
+    unique = np.unique(class_map)
+    print(f"🔍 Unique classes in class_map: {unique}")
+    print({int(u): ID2LABEL.get(int(u), 'UNKNOWN') for u in unique})
 
-    if masks_tensor.shape[0] == 0:
-        logger.warning(f"SAM non ha prodotto maschere per le parti {target_parts}. Non salverò maschere di debug.") 
-        return Image.new('L', image.size, 0)
+    results = {}
+    for part in parts:
+        idx = LABEL_TO_IDX.get(part)
+        if idx is None:
+            print(f"❗️ Unknown part richiesto: {part}")
+            continue
+        # Raw mask
+        raw = (class_map == idx).astype(np.uint8) * 255
+        cv2.imwrite(os.path.join(debug_dir, f"{debug_id}_{part}_raw.png"), raw)
+        # Post-process: chiusura + dilatazione
+        ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
+        closed = cv2.morphologyEx(raw, cv2.MORPH_CLOSE, ker, iterations=2)
+        dilated = cv2.dilate(closed, ker, iterations=1)
+        cv2.imwrite(os.path.join(debug_dir, f"{debug_id}_{part}_pp.png"), dilated)
+        # Filtraggio blob piccoli
+        n, lbl_map, stats, _ = cv2.connectedComponentsWithStats(dilated)
+        final = np.zeros_like(dilated)
+        area_thr = w * h * 0.001
+        for i in range(1, n):
+            if stats[i, cv2.CC_STAT_AREA] >= area_thr:
+                final[lbl_map == i] = 255
+        cv2.imwrite(os.path.join(debug_dir, f"{debug_id}_{part}_final.png"), final)
 
-    final_mask_np_bool = np.zeros(masks_tensor.shape[2:], dtype=bool)
-    for i in range(masks_tensor.shape[0]):
-        current_mask_np = masks_tensor[i].squeeze().cpu().numpy()
-        final_mask_np_bool = np.logical_or(final_mask_np_bool, current_mask_np)
+        results[part] = Image.fromarray(final, 'L')
+    return results
 
-    raw_sam_pil_mask = Image.fromarray(final_mask_np_bool.astype(np.uint8) * 255, 'L')
-
-    dilation_kernel = np.ones((5, 5), np.uint8)
-    dilated_mask_np = cv2.dilate(np.array(raw_sam_pil_mask), dilation_kernel, iterations=1)
-    blurred_mask_np = cv2.GaussianBlur(dilated_mask_np, (5, 5), 0)
-    final_processed_pil_mask = Image.fromarray(blurred_mask_np)
-
-    logger.info(f"Maschera generata con successo per le parti: {target_parts}")
-
-    if DEBUG_MODE:
-        logger.info("DEBUG_MODE is True. Attempting to save debug masks.") 
-        try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            debug_save_path = os.path.join(script_dir, "static", "debug_masks")
-            logger.info(f"Calculated script_dir: {script_dir}") 
-            logger.info(f"Calculated debug_save_path for masks: {debug_save_path}") 
-            
-            os.makedirs(debug_save_path, exist_ok=True)
-            
-            if not os.path.isdir(debug_save_path):
-                logger.error(f"ERRORE: La directory di debug {debug_save_path} non esiste e non è stato possibile crearla. Controllare i permessi.")
-                return final_processed_pil_mask 
-            if not os.access(debug_save_path, os.W_OK):
-                logger.error(f"ERRORE: La directory di debug {debug_save_path} non è scrivibile. Controllare i permessi.")
-                return final_processed_pil_mask
-
-            timestamp_uuid = uuid.uuid4().hex[:6]
-            parts_str = '_'.join(target_parts)
-            
-            raw_mask_filename = f"debug_mask_raw_{parts_str}_{timestamp_uuid}.png"
-            raw_mask_filepath = os.path.join(debug_save_path, raw_mask_filename)
-            logger.info(f"Attempting to save RAW mask to: {raw_mask_filepath}") 
-            raw_sam_pil_mask.save(raw_mask_filepath)
-            logger.info(f"Maschera RAW di SAM (prima del post-processing) salvata in: {raw_mask_filepath}")
-            logger.info(f"  Per visualizzarla (se il server serve 'static'), prova l'URL (esempio): /static/debug_masks/{raw_mask_filename}")
+# ==========================================================================
+# Wrapper retrocompatibile: restituisce maschera singola per make_mask()
+def make_mask(image: Image.Image, parts: tuple[str, ...]) -> Image.Image:
+    masks = make_masks(image, parts)
+    part = parts[0]
+    if part in masks:
+        return masks[part]
+    # fallback: maschera nera se non trovata
+    w, h = image.size
+    return Image.new('L', (w, h), 0)
 
 
-            processed_mask_filename = f"debug_mask_processed_{parts_str}_{timestamp_uuid}.png"
-            processed_mask_filepath = os.path.join(debug_save_path, processed_mask_filename)
-            logger.info(f"Attempting to save PROCESSED mask to: {processed_mask_filepath}") 
-            final_processed_pil_mask.save(processed_mask_filepath)
-            logger.info(f"Maschera PROCESSATA (dopo dilatazione/sfocatura) salvata in: {processed_mask_filepath}")
-            logger.info(f"  Per visualizzarla (se il server serve 'static'), prova l'URL (esempio): /static/debug_masks/{processed_mask_filename}")
-
-        except Exception as e:
-            logger.error(f"Impossibile salvare le maschere di debug: {e}")
-            logger.error(traceback.format_exc())
-    else:
-        logger.info("DEBUG_MODE is False. Skipping saving of debug masks.") 
-
-    return final_processed_pil_mask
 
 
 def process_generate_all_parts(image_bytes, prompts, progress_cb=None, model_name=None):

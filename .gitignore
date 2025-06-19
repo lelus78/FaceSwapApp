@@ -27,4 +27,6 @@ app/static/temp/
 # Temporary debug images
 app/temp/
 temp/masks/
+/debug
+app/debug/
 .venv/
