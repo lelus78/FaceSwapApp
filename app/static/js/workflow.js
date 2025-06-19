@@ -386,19 +386,43 @@ export async function handleGenerateAll() {
 }
 
 export async function handleGenerateCaption() {
-  const imageToCaption = state.finalImageWithSwap || state.upscaledImageBlob || state.sceneImageBlob || state.processedSubjectBlob || state.subjectFile;
-  if (!imageToCaption) return showError('Immagine Mancante', 'Nessuna immagine da descrivere.');
-  startProgressBar('✨ Generazione Didascalia AI...', 10);
-  try {
-    const tone = dom.toneButtonsContainer.querySelector('.active')?.dataset.tone || 'scherzoso';
-    const result = await api.generateCaption(imageToCaption, tone);
-    dom.captionTextInput.value = result.caption;
-    updateMemePreview();
-  } catch (err) {
-    showError('Errore Generazione Didascalia', err.message);
-  } finally {
-    finishProgressBar();
-  }
+    const imageToCaption = state.finalImageWithSwap || state.upscaledImageBlob || state.sceneImageBlob || state.processedSubjectBlob || state.subjectFile;
+    if (!imageToCaption) {
+        return showError('Immagine Mancante', 'Nessuna immagine da descrivere.');
+    }
+    startProgressBar('✨ Generazione Didascalia AI...', 10);
+    
+    // Selezioniamo il nostro "cartello" per gli avvisi una sola volta
+    const notificationDiv = dom.fallbackNotification;
+
+    try {
+        const tone = dom.toneButtonsContainer.querySelector('.active')?.dataset.tone || 'scherzoso';
+        
+        // La chiamata API ora puo' restituire 'caption' e 'fallback_message'
+        const result = await api.generateCaption(imageToCaption, tone);
+
+        // --- NUOVA LOGICA PER GESTIRE IL MESSAGGIO DI FALLBACK ---
+        if (result.fallback_message) {
+            // Se SÌ: scriviamo il messaggio e mostriamo il cartello
+            notificationDiv.textContent = result.fallback_message;
+            notificationDiv.classList.remove('hidden');
+        } else {
+            // Se NO: ci assicuriamo che il cartello sia nascosto
+            notificationDiv.classList.add('hidden');
+        }
+        // --- FINE NUOVA LOGICA ---
+
+        // Il resto della logica rimane identico
+        dom.captionTextInput.value = result.caption;
+        updateMemePreview();
+
+    } catch (err) {
+        showError('Errore Generazione Didascalia', err.message);
+        // Nascondiamo il box di notifica anche in caso di errore
+        if (notificationDiv) notificationDiv.classList.add('hidden');
+    } finally {
+        finishProgressBar();
+    }
 }
 
 export async function handleShare() {

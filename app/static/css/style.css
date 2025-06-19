@@ -229,3 +229,30 @@
     opacity: 0;
     pointer-events: auto;
 }
+
+/* =====================================================================
+// === FIX PER LA NITIDEZZA DEL TESTO SUI BOTTONI ===
+// ===================================================================== */
+
+/* Applichiamo queste regole a tutti i bottoni principali dell'area risultati */
+#download-btn,
+#share-btn,
+#reset-all-btn,
+#add-gallery-btn {
+    /*
+    Questa è l'istruzione più importante: dice ai browser basati su WebKit
+    (Chrome, Edge, Safari) e Firefox di usare un algoritmo di anti-aliasing
+    che favorisce la nitidezza piuttosto che la "morbidezza" del font.
+    */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+
+    /*
+    Questo è un piccolo "trucco" comune. Forzando una trasformazione 3D
+    (anche se neutra), si spinge il browser a dedicare un "layer" di rendering
+    separato al bottone, il che quasi sempre migliora la nitidezza del testo
+    durante le animazioni e in presenza di ombre.
+    */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+}

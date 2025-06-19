@@ -66,7 +66,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from flask_wtf import CSRFProtect
-from app.meme_studio import meme_bp, GEMINI_MODEL_NAME
+from app.meme_studio import meme_bp
 from app.auth import auth_bp, login_required
 from app.model_manager import model_bp
 from .forms import (
@@ -1156,49 +1156,106 @@ def create_app():
 
     @app_instance.route("/enhance_prompt", methods=["POST"])
     def enhance_prompt():
-        api_key = current_app.config.get("GEMINI_API_KEY")
-        if not api_key:
-            return jsonify(error="Gemini API key not configured"), 400
+        logging.info("[PROMPT] Richiesta di miglioramento (Ibrido: Gemini -> Ollama)...")
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        gemini_model = os.getenv("GEMINI_MODEL")
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL")
+        ollama_fallback_model = os.getenv("OLLAMA_FALLBACK_MODEL")
+
+        data = request.get_json()
+        if not data or "image_data" not in data: return jsonify(error="image_data missing"), 400
+        
+        fallback_message, enhanced_prompt = None, ""
+
         try:
-            data = request.get_json()
-            if not data or "image_data" not in data:
-                return jsonify(error="image_data missing"), 400
-            system_prompt = "Sei un esperto prompt engineer. Migliora il seguente prompt in italiano basandoti sull'immagine fornita. Restituisci solo il prompt ottimizzato."
-            payload = { "contents": [ { "parts": [ { "text": system_prompt + "\nUtente: " + data.get("prompt_text", "") }, { "inlineData": { "mimeType": "image/jpeg", "data": data["image_data"], } }, ] } ] }
-            resp = requests.post( f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}", headers={"Content-Type": "application/json"}, json=payload, timeout=10, )
-            resp.raise_for_status()
-            result = resp.json()
-            if result.get("candidates"):
-                return jsonify( enhanced_prompt=result["candidates"][0]["content"]["parts"][0][ "text" ].strip('"') )
-            return jsonify(error="No prompt generated"), 500
-        except requests.Timeout:
-            return ( jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."), 504, )
+            if not gemini_api_key or not gemini_model: raise ValueError("Configurazione Gemini mancante")
+
+            logging.info("Tentativo con API Google Gemini per migliorare il prompt...")
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_api_key}"
+            prompt_text = "Agisci come un prompt artist per Stable Diffusion. Migliora il prompt utente per creare un'immagine di alta qualità, includendo stile, illuminazione e parole chiave per la qualità (es. 'cinematic photo, masterpiece, 4k'). Rispondi solo con il prompt migliorato in inglese."
+            full_prompt = f"{prompt_text}\nMigliora questo prompt: '{data.get('prompt_text', '')}'"
+            payload = {"contents": [{"parts": [{"text": full_prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": data["image_data"]}}]}]}
+            
+            response = requests.post(gemini_url, json=payload, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            enhanced_prompt = result["candidates"][0]["content"]["parts"][0]["text"].strip().strip('"')
+
         except Exception as e:
-            traceback.print_exc()
-            return jsonify(error=f"Gemini error: {e}"), 500
+            logging.warning(f"Chiamata a Gemini per il prompt fallita ({e}). Eseguo il fallback su Ollama.")
+            fallback_message = "Miglioramento prompt eseguito con un modello locale."
+
+            try:
+                if not ollama_fallback_model: raise ValueError("Modello Ollama di fallback non configurato.")
+                logging.info(f"Tentativo con Ollama per il prompt (Modello: {ollama_fallback_model})...")
+                system_prompt = "Agisci come un prompt artist per Stable Diffusion. Migliora il prompt utente per creare un'immagine di alta qualità, includendo stile, illuminazione e parole chiave (es. 'cinematic photo, masterpiece, 4k'). Rispondi solo con il prompt migliorato in inglese."
+                full_prompt_ollama = f"{system_prompt}\nMigliora questo prompt: '{data.get('prompt_text', '')}'"
+                
+                ollama_payload = {"model": ollama_fallback_model, "prompt": full_prompt_ollama, "images": [data["image_data"]], "stream": False, "keep_alive": "30s"}
+                ollama_response = requests.post(f"{ollama_base_url}/api/generate", json=ollama_payload, timeout=60)
+                ollama_response.raise_for_status()
+                
+                result = ollama_response.json()
+                enhanced_prompt = result.get("response", "").strip().strip('"')
+            
+            except Exception as ollama_e:
+                logging.error(f"ERRORE: Anche il fallback su Ollama per il prompt è fallito: {ollama_e}")
+                return jsonify({"error": "Sia il servizio principale che quello di backup non sono disponibili."}), 503
+
+        return jsonify({"enhanced_prompt": enhanced_prompt, "fallback_message": fallback_message})
+
+
 
     @app_instance.route("/enhance_part_prompt", methods=["POST"])
     def enhance_part_prompt():
-        api_key = current_app.config.get("GEMINI_API_KEY")
-        if not api_key:
-            return jsonify(error="Gemini API key not configured"), 400
+        logging.info("[PROMPT-PART] Richiesta di miglioramento parte (Ibrido: Gemini -> Ollama)...")
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        gemini_model = os.getenv("GEMINI_MODEL")
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL")
+        ollama_fallback_model = os.getenv("OLLAMA_FALLBACK_MODEL")
+
+        data = request.get_json()
+        if not data or "image_data" not in data: return jsonify(error="image_data missing"), 400
+
+        part_name = data.get('part_name', 'soggetto')
+        fallback_message, enhanced_prompt = None, ""
+
         try:
-            data = request.get_json()
-            if not data or "image_data" not in data:
-                return jsonify(error="image_data missing"), 400
-            system_prompt = f"Migliora il prompt per la parte '{data.get('part_name', 'subject')}'. Rispondi in italiano con un testo adatto a Stable Diffusion. Restituisci solo il prompt ottimizzato."
-            payload = { "contents": [ { "parts": [ { "text": system_prompt + "\nUtente: " + data.get("prompt_text", "") }, { "inlineData": { "mimeType": "image/jpeg", "data": data["image_data"], } }, ] } ] }
-            resp = requests.post( f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={api_key}", headers={"Content-Type": "application/json"}, json=payload, timeout=10, )
-            resp.raise_for_status()
-            result = resp.json()
-            if result.get("candidates"):
-                return jsonify( enhanced_prompt=result["candidates"][0]["content"]["parts"][0][ "text" ].strip('"') )
-            return jsonify(error="No prompt generated"), 500
-        except requests.Timeout:
-            return ( jsonify(error="La richiesta a Gemini ha impiegato troppo tempo."), 504, )
+            if not gemini_api_key or not gemini_model: raise ValueError("Configurazione Gemini mancante")
+
+            logging.info("Tentativo con API Google Gemini per parte di prompt...")
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_api_key}"
+            prompt_text = f"Migliora il prompt per la parte '{part_name}' di un'immagine. Crea un testo descrittivo e conciso, ideale per un modello text-to-image. Rispondi solo con il testo migliorato."
+            full_prompt = f"{prompt_text}\nMigliora questo: '{data.get('prompt_text', '')}'"
+            payload = {"contents": [{"parts": [{"text": full_prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": data["image_data"]}}]}]}
+            
+            response = requests.post(gemini_url, json=payload, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            enhanced_prompt = result["candidates"][0]["content"]["parts"][0]["text"].strip().strip('"')
+
         except Exception as e:
-            traceback.print_exc()
-            return jsonify(error=f"Gemini error: {e}"), 500
+            logging.warning(f"Chiamata a Gemini per parte di prompt fallita ({e}). Eseguo il fallback su Ollama.")
+            fallback_message = "Miglioramento prompt eseguito con un modello locale."
+
+            try:
+                if not ollama_fallback_model: raise ValueError("Modello Ollama di fallback non configurato.")
+                logging.info(f"Tentativo con Ollama per parte di prompt (Modello: {ollama_fallback_model})...")
+                system_prompt = f"Migliora il prompt per la parte '{part_name}' di un'immagine. Crea un testo descrittivo e conciso. Rispondi solo con il testo migliorato."
+                full_prompt_ollama = f"{system_prompt}\nMigliora questo: '{data.get('prompt_text', '')}'"
+                
+                ollama_payload = {"model": ollama_fallback_model, "prompt": full_prompt_ollama, "images": [data["image_data"]], "stream": False, "keep_alive": "30s"}
+                ollama_response = requests.post(f"{ollama_base_url}/api/generate", json=ollama_payload, timeout=60)
+                ollama_response.raise_for_status()
+                
+                result = ollama_response.json()
+                enhanced_prompt = result.get("response", "").strip().strip('"')
+            
+            except Exception as ollama_e:
+                logging.error(f"ERRORE: Anche il fallback su Ollama per parte di prompt è fallito: {ollama_e}")
+                return jsonify({"error": "Sia il servizio principale che quello di backup non sono disponibili."}), 503
+
+        return jsonify({"enhanced_prompt": enhanced_prompt, "fallback_message": fallback_message})
 
     @app_instance.route("/analyze_parts", methods=["POST"])
     def analyze_parts():

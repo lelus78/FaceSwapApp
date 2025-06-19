@@ -1,122 +1,63 @@
-# AGENTS.md
+# Architettura degli Agenti
 
-## Overview
-
-This project includes a chain of specialized AI models ("agents") that work together to create a high-quality, user-guided face swap and compositing experience. Each agent is responsible for a specific stage of the workflow, and together they form a cohesive, multi-step pipeline that transforms raw inputs into photorealistic, stylized final outputs.
+Questo documento descrive gli "agenti" o i componenti intelligenti che alimentano le funzionalità principali dell'applicazione. Ogni agente è responsabile di un compito specifico e opera all'interno del worker Celery.
 
 ---
 
-## 🧠 Agent: Background Remover — `rembg`
+## Agent: Image Processor — IP-Adapter + Stable Diffusion
 
-**Purpose**: Automatically isolates the subject from the background to prepare for scene generation and compositing.
+Questo è l'agente principale, responsabile della generazione e della manipolazione delle immagini.
 
-* **Input**: PNG/JPEG image with subject
-* **Output**: Transparent PNG with subject only
-* **Model**: `rembg` (based on U2Net)
-* **Stage**: First
+-   **Model/API**: `diffusers` (Hugging Face), `IP-Adapter`, `Stable Diffusion 1.5`
+-   **Trigger**: Chiamata API da `/process_image`
+-   **Stage**: Eseguito nel worker Celery (`process_image_task`)
 
----
+### Descrizione del Flusso
 
-## 🧠 Agent: Prompt Enhancer — Google Gemini API
-
-**Purpose**: Analyzes the subject and augments the user-provided text prompt to produce a richer, context-aware prompt for scene generation.
-
-* **Input**: Subject image + raw prompt text
-* **Output**: Enhanced prompt
-* **Model/API**: Google Gemini (via API key)
-* **Stage**: Second
-
----
-
-## 🧠 Agent: Scene Generator — SDXL + ControlNet
-
-**Purpose**: Generates a detailed, photorealistic scene around the subject using the enhanced prompt and an optional subject mask.
-
-* **Input**: Masked subject + enriched prompt
-* **Output**: New background scene image
-* **Models**: Stable Diffusion XL (SDXL), ControlNet (Canny for detail guidance)
-* **Stage**: Third
+1.  **Ricezione del Task**: Il worker Celery riceve un task con i dati necessari: prompt, immagine di input (volto), immagine di destinazione (opzionale), e parametri (scale, steps, etc.).
+2.  **Caricamento dei Modelli**: Carica i modelli richiesti (Stable Diffusion, IP-Adapter, InsightFace per il face detection) se non sono già in memoria.
+3.  **Preparazione delle Immagini**:
+    -   Estrae il volto dall'immagine di input usando `insightface`.
+    -   Pre-processa l'immagine di destinazione (se presente) o crea un'immagine di base per il text-to-image.
+4.  **Generazione**: Esegue il loop di denoising di Stable Diffusion, utilizzando l'IP-Adapter per guidare la generazione basandosi sulle feature del volto di input.
+5.  **Salvataggio**: Salva l'immagine risultante nella directory `outputs/` e aggiorna il database.
+6.  **Restituzione del Risultato**: Memorizza l'URL dell'immagine nel backend dei risultati di Celery (Redis) in modo che il frontend possa recuperarla.
 
 ---
 
-## 🧠 Agent: Upscaler & Detailer — Real-ESRGAN + ControlNet
+## Agent: Prompt Enhancer — Ollama
 
-**Purpose**: Upscales the generated image and enhances fine textures, maintaining photorealism and preventing artifacts.
+Questo agente migliora i prompt forniti dall'utente per ottenere risultati migliori dal modello di generazione di immagini. Sfrutta un modello linguistico multimodale per analizzare sia il testo che un'immagine di riferimento.
 
-* **Input**: Raw AI-generated image
-* **Output**: High-resolution detailed image
-* **Models**: Real-ESRGAN, ControlNet (tiled Canny)
-* **Stage**: Fourth
+-   **Model/API**: **Ollama (con modello multimodale, es. `llava`)**
+-   **Trigger**: Chiamate API da `/enhance_prompt` e `/enhance_part_prompt`
+-   **Stage**: Eseguito direttamente nel server Flask (richiesta sincrona veloce)
 
----
+### Descrizione del Flusso
 
-## 🧠 Agent: Face Swapper — InsightFace
+1.  **Richiesta API**: L'utente clicca sul pulsante "Migliora" nell'interfaccia. Il frontend invia il testo del prompt corrente e l'immagine di riferimento (in formato base64) all'endpoint Flask.
+2.  **Costruzione del Prompt per l'LLM**: Il backend Flask costruisce un meta-prompt, istruendo il modello Ollama su come agire. Ad esempio: *"Sei un esperto prompt engineer. Migliora il seguente prompt basandoti sull'immagine fornita. Restituisci solo il prompt ottimizzato..."*.
+3.  **Chiamata a Ollama**: Effettua una richiesta HTTP all'istanza locale di Ollama, inviando il meta-prompt e l'immagine.
+4.  **Parsing della Risposta**: Estrae il testo generato dalla risposta JSON di Ollama.
+5.  **Invio al Frontend**: Restituisce il prompt migliorato al frontend, che lo aggiorna nell'area di testo.
 
-**Purpose**: Replaces the target face with a selected source face using facial recognition and vector-based alignment.
-
-* **Input**: Processed image + face database + index selection
-* **Output**: Face-swapped image
-* **Model**: InsightFace (`inswapper_128.onnx`)
-* **Stage**: Fifth
+Questo agente permette di creare descrizioni più ricche e dettagliate, migliorando significativamente la qualità e la coerenza delle immagini generate.
 
 ---
 
-## 🧠 Agent: Face Restorer — GFPGAN
+## Agent: Meme Content Generator — Ollama
 
-**Purpose**: Restores skin clarity and facial features post-swapping to produce a cohesive, natural look.
+Questo agente viene utilizzato all'interno del "Meme Studio" per generare automaticamente contenuti testuali (didascalie e tag) basati su un'immagine.
 
-* **Input**: Face-swapped image
-* **Output**: Restored image with enhanced facial fidelity
-* **Model**: GFPGAN v1.4
-* **Stage**: Sixth
+-   **Model/API**: **Ollama (con modello multimodale, es. `llava`)**
+-   **Trigger**: Chiamate API da `/meme/generate_caption` e `/meme/generate_tags`
+-   **Stage**: Eseguito direttamente nel server Flask
 
----
+### Descrizione del Flusso
 
-## 🧠 Agent: Finishing Toolkit — HTML5 Canvas (Client‑Side)
-
-**Purpose**: Offers creative finishing tools like text overlay, stickers, meme formatting, and export options. Runs in-browser.
-
-* **Input**: Final image
-* **Output**: Edited PNG, MP4 or GIF
-* **Tech**: JavaScript + `<canvas>` API + `lottie-web` for animated stickers
-* **Stage**: Final (Client-side)
-
----
-
-## Pipeline Summary
-
-```text
-rembg → Gemini → SDXL + ControlNet → Real‑ESRGAN → InsightFace → GFPGAN → canvas
-(mask)   (prompt)     (scene)          (detail)       (swap)        (restore)    (edit/export)
-```
-
-Each agent is designed to accept the output of the previous one, forming a fluid and responsive AI-driven workflow that runs server-side until the final user-controlled editing phase.
-
----
-
-## Future Enhancements
-
-* Modular agent registration for plug-and-play inference backends
-* Support for multi-agent orchestration using task queues
-* Multi-subject pipeline support
-* Agent status monitoring with async WebSocket updates
-
----
-
-## Style & Coding Standards
-
-* All Python code follows [PEP-8](https://peps.python.org/pep-0008/) conventions.
-* Functions and agents are organized by responsibility and named accordingly.
-* Async tasks (planned) will follow snake\_case naming and centralized logging for monitoring.
-
----
-
-## Testing Notes
-
-This project currently does not include unit or integration tests for the individual agents.
-
-**Planned testing strategy:**
-
-* Snapshot testing for image output of each agent
-* API response validation using Flask test client
-* Manual visual regression checks for key image stages
+1.  **Richiesta API**: Dal Meme Studio, l'utente richiede una didascalia o dei tag per l'immagine corrente. L'immagine e il "tono" desiderato (es. scherzoso, sarcastico) vengono inviati al backend.
+2.  **Prompting Specifico**: Il backend crea un prompt specifico per il compito.
+    -   *Per le didascalie*: *"Genera una singola, breve e brillante didascalia per l'immagine fornita con un tono [scherzoso]..."*
+    -   *Per i tag*: *"Genera da 3 a 5 brevi tag in italiano per l'immagine fornita. Rispondi con una lista separata da virgole..."*
+3.  **Chiamata a Ollama**: Invia la richiesta all'istanza locale di Ollama.
+4.  **Restituzione dei Contenuti**: Il testo generato (didascalia o tag) viene restituito al frontend e visualizzato nell'editor del Meme Studio.
