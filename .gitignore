@@ -7,7 +7,6 @@
 
 # Ambiente Python
 /venv/
-.venv/
 __pycache__/
 
 # File sensibili e di sistema
@@ -27,6 +26,6 @@ app/static/temp/
 # Temporary debug images
 app/temp/
 temp/masks/
-/debug
+/debug/
 app/debug/
-.venv/
+app/static/node_modules/
